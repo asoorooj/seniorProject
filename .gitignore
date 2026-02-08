@@ -1,0 +1,6 @@
+aiModels/languageModel/.venv
+aiModels/languageModel/archive.zip
+aiModels/languageModel/.idea
+aiModels/languageModel/archive
+aiModels/languageModel/emotions.csv
+aiModels/languageModel/combined_model.pth
