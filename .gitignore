@@ -4,3 +4,6 @@ aiModels/languageModel/.idea
 aiModels/languageModel/archive
 aiModels/languageModel/emotions.csv
 aiModels/languageModel/*.pth
+aiModels/languageModel/hidden.txt
+
+frontend/mentalHealthApp/node_modules
