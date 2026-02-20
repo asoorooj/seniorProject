@@ -1,0 +1,1 @@
+CREATE DATABASE emotion_recognition_db;
