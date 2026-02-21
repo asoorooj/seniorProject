@@ -7,10 +7,10 @@ aiModels/languageModel/hidden.txt
 
 frontend/mentalHealthApp/node_modules
 
-EmotionRecognition-backend/.env
-EmotionRecognition-backend/__pycache__/
-EmotionRecognition-backend/*.pyc
-EmotionRecognition-backend/instance/
-EmotionRecognition-backend/*.sqlite3
-EmotionRecognition-backend/.venv/
-EmotionRecognition-backend/venv/
+backend/EmotionRecognition-backend/.env
+backend/EmotionRecognition-backend/__pycache__/
+backend/EmotionRecognition-backend/*.pyc
+backend/EmotionRecognition-backend/instance/
+backend/EmotionRecognition-backend/*.sqlite3
+backend/EmotionRecognition-backend/.venv/
+backend/EmotionRecognition-backend/venv/
