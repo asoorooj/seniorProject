@@ -3,7 +3,14 @@ aiModels/languageModel/archive.zip
 aiModels/languageModel/.idea
 aiModels/languageModel/archive
 aiModels/languageModel/emotions.csv
-aiModels/languageModel/*.pth
 aiModels/languageModel/hidden.txt
 
 frontend/mentalHealthApp/node_modules
+
+EmotionRecognition-backend/.env
+EmotionRecognition-backend/__pycache__/
+EmotionRecognition-backend/*.pyc
+EmotionRecognition-backend/instance/
+EmotionRecognition-backend/*.sqlite3
+EmotionRecognition-backend/.venv/
+EmotionRecognition-backend/venv/
