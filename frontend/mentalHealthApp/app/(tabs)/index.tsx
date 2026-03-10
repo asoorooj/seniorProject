@@ -1,98 +1,72 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, ScrollView, StyleSheet, StatusBar } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { HomeHeader } from '@/components/home/HomeHeader';
+import { RecommendationCard, Recommendation } from '@/components/home/RecommendationCard';
+import { CheckInCard } from '@/components/home/CheckInCard';
+import { WeeklyChart, DayScore } from '@/components/home/WeeklyChart';
+
+// Placeholder — replace with API response from GET /api/recommendations/today
+const RECOMMENDATION: Recommendation = {
+  title: 'Try a breathing exercise',
+  description: 'You were in a state of being anxious. A 5 minute box breathing is recommended.',
+  exerciseTitle: 'Box Breathing',
+  exerciseDuration: '5 minute exercise',
+  exerciseInfo: 'Box breathing helps calm your nervous system. Inhale for 4 seconds, hold for 4, exhale for 4, hold for 4 — repeat.',
+  steps: ['Inhale  4s', 'Hold  4s', 'Exhale  4s', 'Hold  4s'],
+};
+
+// Placeholder — replace with API response from GET /api/scores/week
+const WEEKLY_SCORES: DayScore[] = [
+  { day: 'M', score: 58 },
+  { day: 'T', score: 40 },
+  { day: 'W', score: 78 },
+  { day: 'T', score: 90 },
+  { day: 'F', score: 58 },
+  { day: 'S', score: 100, isToday: true },
+  { day: 'S', score: 66 },
+];
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const [selectedMood, setSelectedMood] = useState(2);
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+
+        <HomeHeader
+          username="SKYLAR !"
+          greeting="GOOD AFTERNOON,"
+          selectedMood={selectedMood}
+          onMoodSelect={setSelectedMood}
+        />
+
+        <View style={styles.body}>
+          <RecommendationCard data={RECOMMENDATION} />
+          <CheckInCard onStartScan={() => {/* TODO: navigate to scan screen */}} />
+          <WeeklyChart data={WEEKLY_SCORES} onViewAll={() => {/* TODO: navigate to journal */}} />
+        </View>
+
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#F8F5FF',
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  scroll: {
+    flex: 1,
+    backgroundColor: '#F8F5FF',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  body: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 110,
+    gap: 16,
   },
 });
