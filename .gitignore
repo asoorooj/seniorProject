@@ -5,6 +5,8 @@ aiModels/languageModel/archive
 aiModels/languageModel/emotions.csv
 aiModels/languageModel/hidden.txt
 
+aiModels/fusionModel/*.wav
+
 frontend/mentalHealthApp/node_modules
 
 backend/EmotionRecognition-backend/.env
