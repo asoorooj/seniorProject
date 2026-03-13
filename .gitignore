@@ -6,6 +6,7 @@ aiModels/languageModel/emotions.csv
 aiModels/languageModel/hidden.txt
 
 aiModels/fusionModel/*.wav
+aiModels/fusionModel/*.jpg
 
 frontend/mentalHealthApp/node_modules
 
