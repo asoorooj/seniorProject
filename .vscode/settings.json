@@ -1,0 +1,10 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "app",
+            "database": "${workspaceFolder:seniorProject}/backend/EmotionRecognition-backend/instance/app.db"
+        }
+    ]
+}
