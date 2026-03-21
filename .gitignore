@@ -17,3 +17,4 @@ backend/EmotionRecognition-backend/instance/
 backend/EmotionRecognition-backend/*.sqlite3
 backend/EmotionRecognition-backend/.venv/
 backend/EmotionRecognition-backend/venv/
+backend/EmotionRecognition-backend/migrations/versions

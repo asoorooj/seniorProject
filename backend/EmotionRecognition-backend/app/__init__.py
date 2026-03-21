@@ -35,6 +35,9 @@ def create_app():
     from app.routes.health import health_bp
     flask_app.register_blueprint(health_bp)
 
+    from app.routes.endpoints import api_bp
+    flask_app.register_blueprint(api_bp)
+
     # Error handlers
     @flask_app.errorhandler(404)
     def not_found(_):
