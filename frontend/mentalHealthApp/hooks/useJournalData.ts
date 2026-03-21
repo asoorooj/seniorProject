@@ -61,17 +61,6 @@ interface RawEntry {
     but we can change if needed
 */}
 
-const MOOD_POOL = [
-    { mood: 'at_peace',    score: 88, face: { score: 91, label: 'neutral' }, voice: { score: 84, label: 'relaxed' }, text: { score: 79, label: 'positive' }, journal_text: 'Felt really grounded today.',                      suggestion: 'Keep up the journaling habit',   tip: 'Try a 5-minute morning meditation' },
-    { mood: 'mostly_calm', score: 74, face: { score: 80, label: 'joy' },     voice: { score: 72, label: 'calm'    }, text: { score: 68, label: 'positive' }, journal_text: "Didn't feel great about the presentation feedback.", suggestion: 'Some rest and music',             tip: 'Journal for 10 minutes before bed' },
-    { mood: 'low_energy',  score: 42, face: { score: 60, label: 'sad' },     voice: { score: 50, label: 'neutral' }, text: { score: 55, label: 'neutral'  }, journal_text: null,                                               suggestion: null,                             tip: null },
-    { mood: 'focused',     score: 81, face: { score: 75, label: 'neutral' }, voice: { score: 80, label: 'calm'    }, text: { score: 82, label: 'positive' }, journal_text: 'Deep work session, felt in the zone.',              suggestion: 'Protect your morning hours',     tip: 'Block calendar time for focused work' },
-    { mood: 'anxious',     score: 38, face: { score: 45, label: 'worried' }, voice: { score: 55, label: 'tense'   }, text: { score: 40, label: 'negative' }, journal_text: 'A lot on my plate today.',                         suggestion: 'Take a short walk outside',      tip: 'Try box breathing for 2 minutes' },
-    { mood: 'energized',   score: 91, face: { score: 95, label: 'happy' },   voice: { score: 88, label: 'upbeat'  }, text: { score: 90, label: 'positive' }, journal_text: 'Great start to the day.',                          suggestion: 'Channel this into something creative', tip: 'Share your energy with someone' },
-];
-
-const HOURS = ['07:30:00', '12:00:00', '18:00:00', '21:00:00'];
-
 async function fetchWeekEntries(weekStart: Date): Promise<RawEntry[]> {
     await new Promise(r => setTimeout(r, 450)); // simulate network delay
 
@@ -81,34 +70,41 @@ async function fetchWeekEntries(weekStart: Date): Promise<RawEntry[]> {
     // go through that data and push it to entries
     const entries: RawEntry[] = [];
 
-    // Generate 1–3 entries per day across the 7-day week
-    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-        const d = new Date(weekStart);
-        d.setDate(weekStart.getDate() + dayOffset);
-        const dateStr = d.toISOString().split('T')[0];
-
-        // Use the day-of-month as a seed so the same date always produces
-        const daySeed = d.getDate() + d.getMonth() * 31;
-        const entryCount = (daySeed % 3) + 1; // 1, 2, or 3 entries
-
-        for (let i = 0; i < entryCount; i++) {
-            const moodIndex = (daySeed + i * 3) % MOOD_POOL.length;
-            entries.push({
-                id: `${dateStr}-${i}`,
-                timestamp: `${dateStr}T${HOURS[(daySeed + i) % HOURS.length]}Z`,
-                mood:         MOOD_POOL[moodIndex].mood,
-                score:        MOOD_POOL[moodIndex].score,
-                face:         MOOD_POOL[moodIndex].face,
-                voice:        MOOD_POOL[moodIndex].voice,
-                text:         MOOD_POOL[moodIndex].text,
-                journal_text: MOOD_POOL[moodIndex].journal_text,
-                suggestion:   MOOD_POOL[moodIndex].suggestion,
-                tip:          MOOD_POOL[moodIndex].tip,
-            });
-        }
+    let asyncFunction = async () =>{
+        let thisItem = await fetch(`http://192.168.1.182:5000/test-db/evaluation/by-date?user_id=1&start_date=${weekStart}`, {
+            method: 'GET',
+            headers: {'Content-Type': 'application/json'}
+        });
+        let jsonData = await thisItem.json();
+        return jsonData;
     }
+    const data = await asyncFunction();
 
-    return entries;
+    let transformedData:any[] = data.evaluations.map((entry: any) => {
+        return {
+            id: entry.evaluation.id,
+            timestamp: entry.evaluation.timestamp,
+            mood: entry.evaluation.emotionLabel,
+            score: entry.evaluation.emotionScore,
+            face: {
+                score: entry.image.emotionScore,
+                label: entry.image.emotionLabel,
+            },
+            voice: {
+                score: entry.audio.emotionScore,
+                label: entry.audio.emotionLabel,
+            },
+            text: {
+                score: entry.text.emotionScore,
+                label: entry.text.emotionLabel,
+            },
+            journal_text: null,
+            suggestion: entry.evaluation.suggestion,
+            tip: null,
+        };
+    });
+
+    return transformedData;
 }
 
 {/*
