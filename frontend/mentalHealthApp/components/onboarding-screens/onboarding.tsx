@@ -60,7 +60,7 @@ export default function OnboardingScreen() {
       <TouchableOpacity
         style={styles.continueButton}
         activeOpacity={0.8}
-        onPress={() => router.push('/survey')}
+        onPress={() => router.push('/(tabs)')}
       >
         <Text style={styles.continueButtonText}>Continue</Text>
       </TouchableOpacity>
