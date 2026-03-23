@@ -17,7 +17,7 @@ export function CheckInCard({ onStartScan }: Props) {
       style={styles.card}
     >
       <Text style={styles.label}>DAILY CHECK-IN</Text>
-      <Text style={styles.title}>Today's emotion logging</Text>
+      <Text style={styles.title}>Today&apos;s emotion logging</Text>
 
       <View style={styles.tabs}>
         {SCAN_TABS.map((tab, i) => (

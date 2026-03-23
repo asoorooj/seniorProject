@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
-import { View, ScrollView, StyleSheet, StatusBar } from 'react-native';
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  StatusBar,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
 import { HomeHeader } from '@/components/home/HomeHeader';
 import { RecommendationCard, Recommendation } from '@/components/home/RecommendationCard';
@@ -10,10 +16,12 @@ import { WeeklyChart, DayScore } from '@/components/home/WeeklyChart';
 // Placeholder — replace with API response from GET /api/recommendations/today
 const RECOMMENDATION: Recommendation = {
   title: 'Try a breathing exercise',
-  description: 'You were in a state of being anxious. A 5 minute box breathing is recommended.',
+  description:
+    'You were in a state of being anxious. A 5 minute box breathing is recommended.',
   exerciseTitle: 'Box Breathing',
   exerciseDuration: '5 minute exercise',
-  exerciseInfo: 'Box breathing helps calm your nervous system. Inhale for 4 seconds, hold for 4, exhale for 4, hold for 4 — repeat.',
+  exerciseInfo:
+    'Box breathing helps calm your nervous system. Inhale for 4 seconds, hold for 4, exhale for 4, hold for 4 — repeat.',
   steps: ['Inhale  4s', 'Hold  4s', 'Exhale  4s', 'Hold  4s'],
 };
 
@@ -30,12 +38,12 @@ const WEEKLY_SCORES: DayScore[] = [
 
 export default function HomeScreen() {
   const [selectedMood, setSelectedMood] = useState(2);
+  const router = useRouter();
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-
         <HomeHeader
           username="SKYLAR !"
           greeting="GOOD AFTERNOON,"
@@ -45,10 +53,9 @@ export default function HomeScreen() {
 
         <View style={styles.body}>
           <RecommendationCard data={RECOMMENDATION} />
-          <CheckInCard onStartScan={() => {/* TODO: navigate to scan screen */}} />
-          <WeeklyChart data={WEEKLY_SCORES} onViewAll={() => {/* TODO: navigate to journal */}} />
+          <CheckInCard onStartScan={() => {}} />
+          <WeeklyChart data={WEEKLY_SCORES} onViewAll={() => {}} />
         </View>
-
       </ScrollView>
     </SafeAreaView>
   );
