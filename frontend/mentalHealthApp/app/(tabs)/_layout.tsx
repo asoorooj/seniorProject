@@ -18,13 +18,13 @@ export default function TabLayout() {
       <Tabs.Screen name="index" />
       <Tabs.Screen name="journal" />
       <Tabs.Screen
-        name="chat"
-        listeners={{
-          tabPress: (e) => {
-            e.preventDefault();
-            router.push('/chat');
-          },
-        }}
+            name="chatNavbar"
+            listeners={{
+                tabPress: (e) => {
+                    e.preventDefault();
+                    router.push('/chat');
+                },
+            }}
       />
       <Tabs.Screen name="profile" />
     </Tabs>

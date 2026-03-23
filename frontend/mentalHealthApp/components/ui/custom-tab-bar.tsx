@@ -8,14 +8,14 @@ type TabIconName = keyof typeof MaterialIcons.glyphMap;
 const TAB_ICONS: Record<string, TabIconName> = {
   index: 'home',
   journal: 'menu-book',
-  chat: 'chat',
+  chatNavbar: 'chat',
   profile: 'person',
 };
 
 const TAB_LABELS: Record<string, string> = {
   index: 'Home',
   journal: 'Journal',
-  chat: 'Chat',
+  chatNavbar: 'Chat',
   profile: 'Profile',
 };
 
