@@ -19,7 +19,7 @@ const TAB_LABELS: Record<string, string> = {
   profile: 'Profile',
 };
 
-export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
+export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   return (
     <View style={styles.wrapper}>
       <View style={styles.container}>
@@ -28,12 +28,36 @@ export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
           const icon = TAB_ICONS[route.name] ?? 'circle';
           const label = TAB_LABELS[route.name] ?? route.name;
 
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            if (!event.defaultPrevented) {
+              navigation.navigate(route.name);
+            }
+          };
+
+          const onLongPress = () => {
+            navigation.emit({
+              type: 'tabLongPress',
+              target: route.key,
+            });
+          };
+
           return (
             <TouchableOpacity
               key={route.key}
               style={styles.tab}
-              onPress={() => navigation.navigate(route.name)}
+              onPress={onPress}
+              onLongPress={onLongPress}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityState={isActive ? { selected: true } : {}}
+              accessibilityLabel={descriptors[route.key].options.tabBarAccessibilityLabel}
+              testID={descriptors[route.key].options.tabBarButtonTestID}
             >
               <View style={[styles.iconContainer, isActive && styles.iconContainerActive]}>
                 <MaterialIcons
@@ -42,9 +66,7 @@ export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
                   color={isActive ? '#FFFFFF' : 'rgba(255,255,255,0.55)'}
                 />
               </View>
-              <Text style={[styles.label, isActive && styles.labelActive]}>
-                {label}
-              </Text>
+              <Text style={[styles.label, isActive && styles.labelActive]}>{label}</Text>
             </TouchableOpacity>
           );
         })}
