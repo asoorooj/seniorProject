@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { colors } from "@/assets/styles/colors"
 
 type Props = {
   name: string;
@@ -65,13 +66,13 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.surface,
     marginBottom: 4,
   },
   memberSince: {
     fontSize: 13,
     fontWeight: '400',
-    color: '#9E8FB8',
+    color: colors.accentDark,
     marginBottom: 24,
   },
   statsRow: {
@@ -87,11 +88,11 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.surface,
   },
   statLabel: {
     fontSize: 12,
     fontWeight: '400',
-    color: '#9E8FB8',
+    color: colors.accentDark,
   },
 });

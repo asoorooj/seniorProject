@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
-import { colors } from '@/assets/colors/colors';
+import { colors } from '@/assets/styles/colors';
 import { MetricBar } from './MetricBar';
 
 export interface LogEntryData {

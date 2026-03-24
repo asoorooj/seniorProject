@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { colors } from '@/assets/colors/colors';
+import { colors } from '@/assets/styles/colors';
 import { LogEntryData } from '@/components/journal/LogEntry';
 
 // ─── Types ────────────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@ import {
     View, Text, TouchableOpacity, Modal,
     StyleSheet, ScrollView, Pressable, Animated,
 } from 'react-native';
-import { colors } from '@/assets/colors/colors';
+import { colors } from '@/assets/styles/colors';
 import { getWeekStart } from '@/hooks/useJournalData';
 
 interface WeekPickerProps {

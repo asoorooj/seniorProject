@@ -4,7 +4,8 @@ import {
   StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '@/assets/colors/colors';
+import { colors, spacing, colorDefinition } from '@/assets/styles/colors';
+import { sectionLabel, pills } from "@/assets/styles/text";
 import { Sparkline } from '@/components/journal/Sparkline';
 import { LogEntry } from '@/components/journal/LogEntry';
 import { WeekPicker } from '@/components/journal/WeekPicker';
@@ -55,11 +56,11 @@ export default function JournalScreen() {
             it shows the current week's date range
           */}
           <TouchableOpacity
-              style={styles.weekSelector}
+              style={[pills.pill, pills.pillAddonLessPadding, pills.pillColorCoralLight]}
               onPress={() => setPickerVisible(true)}
               activeOpacity={0.85}
           >
-            <Text style={styles.weekSelectorText}>{weekRangeLabel}</Text>
+            <Text style={[pills.pillText, colorDefinition.colorPrimary]}>{weekRangeLabel}</Text>
             <Text style={styles.weekSelectorArrow}>▼</Text>
           </TouchableOpacity>
 
@@ -129,7 +130,7 @@ export default function JournalScreen() {
 
           {/* ── Model weekly average metric confidence cards ──────────────────────────────────── */}
           <View style={styles.metricsParent}>
-            <Text style={styles.metricLabel}>AVERAGE CONFIDENCE</Text>
+            <Text style={sectionLabel}>Average Confidence</Text>
             {weekLoading
                 ? <View style={styles.metricCapsuleSkeleton} />
                 : <View style={styles.metricCapsule}>
@@ -149,7 +150,9 @@ export default function JournalScreen() {
           </View>
 
           {/* ── Log ──────────────────────────────────────────────────── */}
-          <Text style={styles.logLabel}>LOG</Text>
+          <View style={styles.metricsParent}>
+            <Text style={sectionLabel}>Log</Text>
+          </View>
 
           {dayLoading
               ? <ActivityIndicator
@@ -187,11 +190,6 @@ export default function JournalScreen() {
   marginHorizontal controls the margins of all objects on screen
   defaultBorderWidth controls the border size of buttons for the darker outline
 */}
-const DEFAULTS = {
-  paddingHorizontal: 12,
-  marginHorizontal: 24,
-  defaultBorderWidth: 2
-} as const;
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
@@ -201,7 +199,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginHorizontal: DEFAULTS.marginHorizontal,
+    marginHorizontal: spacing.marginHorizontal,
     paddingTop: 16,
     paddingBottom: 4,
   },
@@ -211,7 +209,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 12,
     borderColor: colors.primary,
-    borderWidth: DEFAULTS.defaultBorderWidth,
+    borderWidth: spacing.defaultBorderWidth,
     backgroundColor: colors.primaryLight,
     alignItems: 'center', justifyContent: 'center',
   },
@@ -224,25 +222,26 @@ const styles = StyleSheet.create({
 
   // Week range pill
   weekSelector: {
+    marginHorizontal: spacing.marginHorizontal - spacing.paddingHorizontal,
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
+
     flexDirection: 'row',
-    alignItems: 'center',
     alignSelf: 'flex-start',
     gap: 6,
-    marginHorizontal: DEFAULTS.marginHorizontal - DEFAULTS.paddingHorizontal,
     marginTop: 10,
-    backgroundColor: colors.primaryLight,
-    paddingHorizontal: DEFAULTS.paddingHorizontal,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderColor: colors.primary,
-    borderWidth: DEFAULTS.defaultBorderWidth,
+    borderWidth: spacing.defaultBorderWidth,
+    paddingHorizontal: spacing.paddingHorizontal,
+    paddingVertical: 10,
+    borderRadius: 50,
+    alignItems: 'center', justifyContent: 'center',
   },
   weekSelectorText: { fontSize: 13, fontWeight: '700', color: colors.primary },
   weekSelectorArrow: { fontSize: 10, color: colors.primary },
 
   // Date strip
   dateStrip: { paddingTop: 10 },
-  dateStripContent: { paddingHorizontal: DEFAULTS.marginHorizontal, gap: 16 },
+  dateStripContent: { paddingHorizontal: spacing.marginHorizontal, gap: 16 },
   dateItem: {
     paddingVertical: 4,
     paddingBottom: 14,
@@ -267,8 +266,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginHorizontal: DEFAULTS.marginHorizontal,
+    marginHorizontal: spacing.marginHorizontal,
     marginTop: 4,
+    paddingBottom: 14,
     minHeight: 80,
   },
   avgScore: { fontSize: 64, fontWeight: '900', color: colors.textPrimary, letterSpacing: -2 },
@@ -283,8 +283,8 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: "stretch",
     gap: 8,
-    marginHorizontal: DEFAULTS.marginHorizontal,
-    marginTop: 28
+    marginHorizontal: spacing.marginHorizontal,
+    marginTop: 12
   },
   metricLabel: {
     fontSize: 12, fontWeight: '700', color: colors.textSecondary, letterSpacing: 1.5,
@@ -322,9 +322,9 @@ const styles = StyleSheet.create({
   // Log
   logLabel: {
     fontSize: 12, fontWeight: '700', color: colors.textSecondary,
-    letterSpacing: 1.5, marginHorizontal: DEFAULTS.marginHorizontal, marginTop: 28, marginBottom: 12,
+    letterSpacing: 1.5, marginHorizontal: spacing.marginHorizontal, marginTop: 28, marginBottom: 12,
   },
-  timeline: { paddingLeft: 26, paddingRight: DEFAULTS.marginHorizontal },
+  timeline: { paddingLeft: 26, paddingRight: spacing.marginHorizontal },
   timelineLine: {
     position: 'absolute', left: 32, top: 0, bottom: 0,
     width: 2, backgroundColor: colors.timelineLine,
