@@ -183,8 +183,8 @@ def test_get_evaluations_by_date():
             {
                 "id": a.id,
                 "evaluation_id": a.evaluation_id,
-                "emotionScore": a.emotionScore,
-                "emotionLabel": a.emotionLabel,
+                "scores": a.scores,
+                "label": a.label,
             },
         )
 
@@ -195,8 +195,8 @@ def test_get_evaluations_by_date():
             {
                 "id": i.id,
                 "evaluation_id": i.evaluation_id,
-                "emotionScore": i.emotionScore,
-                "emotionLabel": i.emotionLabel,
+                "scores": i.scores,
+                "label": i.label,
             },
         )
 
@@ -207,8 +207,8 @@ def test_get_evaluations_by_date():
             {
                 "id": t.id,
                 "evaluation_id": t.evaluation_id,
-                "emotionScore": t.emotionScore,
-                "emotionLabel": t.emotionLabel,
+                "scores": t.scores,
+                "label": t.label,
             },
         )
 
@@ -220,8 +220,8 @@ def test_get_evaluations_by_date():
                     "id": e.id,
                     "user_id": e.user_id,
                     "timestamp": e.timestamp.isoformat() if e.timestamp else None,
-                    "emotionScore": e.emotionScore,
-                    "emotionLabel": e.emotionLabel,
+                    "scores": e.scores,
+                    "label": e.label,
                     "suggestion": e.suggestion,
                 },
                 "audio": audio_by_eval.get(e.id),
@@ -234,6 +234,7 @@ def test_get_evaluations_by_date():
 
 @api_bp.post("/recieve_eval_data")
 def recieve_eval():
+    user_id = 1
     try:
         data = request.get_json()
 
@@ -257,13 +258,17 @@ def recieve_eval():
         print("Image bytes length:", len(image_bytes))
         print("Text:", text)
 
-        label, probabilities, dict_of_individual_probabilities = predict_fusion(
+        model_outputs = predict_fusion(
             text=text,
             image_bytes=image_bytes,
             audio_bytes=audio_bytes,
         )
 
-        # save_full_evaluation(1,label,)
+        fusion_output = model_outputs["fusion"]
+        label = fusion_output["label"]
+        probabilities = fusion_output["probs"]
+
+        print(model_outputs)
 
         probs_list = [
             {"label": lbl, "probability": float(prob)}
@@ -279,39 +284,107 @@ def recieve_eval():
         # Example response
         return jsonify({
             "message": "Data received successfully",
+            "userId":user_id,
             "label": label,
             "probabilities": probs_list,
             "quick_message": quick_message,
             "audio_size": len(audio_bytes),
             "image_size": len(image_bytes),
             "text": text,
-            "MISC_DATA":dict_of_individual_probabilities,
+            "MISC_DATA": {
+                "fusion": {
+                    "label": fusion_output["label"],
+                    "probabilities": probs_list,
+                },
+                "text": {
+                    "label": model_outputs["text"]["label"],
+                    "probabilities": [
+                        {"label": lbl, "probability": float(prob)}
+                        for lbl, prob in zip(
+                            model_outputs["text"]["labels"],
+                            model_outputs["text"]["probs"],
+                        )
+                    ],
+                },
+                "image": {
+                    "label": model_outputs["image"]["label"],
+                    "probabilities": [
+                        {"label": lbl, "probability": float(prob)}
+                        for lbl, prob in zip(
+                            model_outputs["image"]["labels"],
+                            model_outputs["image"]["probs"],
+                        )
+                    ],
+                },
+                "audio": {
+                    "label": model_outputs["audio"]["label"],
+                    "probabilities": [
+                        {"label": lbl, "probability": float(prob)}
+                        for lbl, prob in zip(
+                            model_outputs["audio"]["labels"],
+                            model_outputs["audio"]["probs"],
+                        )
+                    ],
+                },
+                "confidences": model_outputs["confidences"],
+            },
         }), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
+def _scores_with_raw(labels, probs, raw_label=None):
+    scores = {lbl: float(prob) for lbl, prob in zip(labels, probs)}
+    if raw_label is not None:
+        scores["_raw_label"] = raw_label
+    return scores
+
 def save_full_evaluation(
     user_id,
-    overall_label,
-    overall_score,
-    text_label,
-    text_score,
+    model_outputs,
     text_data,
-    image_label,
-    image_score,
     image_bytes,
-    audio_label,
-    audio_score,
     audio_bytes,
     suggestion=None
-):
+): # {user_id, model_outputs, text, image, audio}
     try:
+        fusion_output = model_outputs["fusion"]
+        text_output = model_outputs["text"]
+        image_output = model_outputs["image"]
+        audio_output = model_outputs["audio"]
+
+        overall_label = fusion_output["label"]
+        overall_scores = _scores_with_raw(
+            fusion_output["labels"],
+            fusion_output["probs"],
+        )
+
+        text_label = text_output["label"]
+        text_scores = _scores_with_raw(
+            text_output["labels"],
+            text_output["probs"],
+            text_output.get("raw_label"),
+        )
+
+        image_label = image_output["label"]
+        image_scores = _scores_with_raw(
+            image_output["labels"],
+            image_output["probs"],
+            image_output.get("raw_label"),
+        )
+
+        audio_label = audio_output["label"]
+        audio_scores = _scores_with_raw(
+            audio_output["labels"],
+            audio_output["probs"],
+            audio_output.get("raw_label"),
+        )
+
         # --- 1. Create main evaluation ---
         evaluation = Evaluation(
             user_id=user_id,
-            emotionScore=int(overall_score),
-            emotionLabel=overall_label,
+            label=overall_label,
+            scores=overall_scores,
             suggestion=suggestion,
             timestamp=datetime.utcnow()
         )
@@ -322,24 +395,24 @@ def save_full_evaluation(
         # --- 2. Text ---
         text_eval = TextEvalutations(
             evaluation_id=evaluation.id,
-            emotionScore=int(text_score),
-            emotionLabel=text_label,
+            label=text_label,
+            scores=text_scores,
             data=text_data
         )
 
         # --- 3. Image ---
         image_eval = ImageEvalutations(
             evaluation_id=evaluation.id,
-            emotionScore=int(image_score),
-            emotionLabel=image_label,
+            label=image_label,
+            scores=image_scores,
             data=image_bytes
         )
 
         # --- 4. Audio ---
         audio_eval = AudioEvalutations(
             evaluation_id=evaluation.id,
-            emotionScore=int(audio_score),
-            emotionLabel=audio_label,
+            label=audio_label,
+            scores=audio_scores,
             data=audio_bytes
         )
 

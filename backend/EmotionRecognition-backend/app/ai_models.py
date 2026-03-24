@@ -327,49 +327,58 @@ def predict_audio_file(audio_bytes, w_cnn=W_CNN, w_svm=W_SVM):
     return pred_label, ensemble_probs, cnn_probs, svm_probs
 
 # ---- Multimodal fusion (audio + video + text) ----
-FUSION_LABELS = ["Anger", "Disgust", "Fear", "Happy", "Neutral", "Sad", "Surprise", "Love"]
+FUSION_LABELS = ["Anger", "Disgust", "Fear", "Happy", "Neutral", "Sad", "Surprise"]
 
-# Map each modality label set to the fusion label space
-TEXT_TO_FUSION = {
-    "sadness": "Sad",
-    "joy": "Happy",
-    "love": "Love",
-    "anger": "Anger",
-    "fear": "Fear",
-    "surprise": "Surprise",
-}
-FACE_TO_FUSION = {
-    "Angry": "Anger",
-    "Disgust": "Disgust",
-    "Fear": "Fear",
-    "Happy": "Happy",
-    "Sad": "Sad",
-    "Surprise": "Surprise",
-    "Neutral": "Neutral",
-}
-AUDIO_TO_FUSION = {lbl: lbl for lbl in audio_target_emotions} # Can we set this statically?
+# Map each modality argmax index to the fusion label index (single label space).
+_FUSION_INDEX = {lbl: i for i, lbl in enumerate(FUSION_LABELS)}
 
-def _project_probs_to_fusion(src_probs, src_labels, label_map):
+TEXT_TO_FUSION_IDX = [
+    _FUSION_INDEX["Sad"],      # sadness
+    _FUSION_INDEX["Happy"],    # joy
+    _FUSION_INDEX["Happy"],    # love
+    _FUSION_INDEX["Anger"],    # anger
+    _FUSION_INDEX["Fear"],     # fear
+    _FUSION_INDEX["Surprise"], # surprise
+]
+
+FACE_TO_FUSION_IDX = [
+    _FUSION_INDEX["Anger"],    # Angry
+    _FUSION_INDEX["Disgust"],  # Disgust
+    _FUSION_INDEX["Fear"],     # Fear
+    _FUSION_INDEX["Happy"],    # Happy
+    _FUSION_INDEX["Sad"],      # Sad
+    _FUSION_INDEX["Surprise"], # Surprise
+    _FUSION_INDEX["Neutral"],  # Neutral
+]
+
+AUDIO_TO_FUSION_IDX = [
+    _FUSION_INDEX["Anger"],    # Anger
+    _FUSION_INDEX["Disgust"],  # Disgust
+    _FUSION_INDEX["Fear"],     # Fear
+    _FUSION_INDEX["Happy"],    # Happy
+    _FUSION_INDEX["Neutral"],  # Neutral
+    _FUSION_INDEX["Sad"],      # Sad
+]
+
+def _project_probs_to_fusion(src_probs, fusion_index_map):
     vec = torch.zeros(len(FUSION_LABELS), dtype=torch.float32)
-    for i, lbl in enumerate(src_labels):
-        if lbl in label_map:
-            fusion_lbl = label_map[lbl]
-            if fusion_lbl in FUSION_LABELS:
-                j = FUSION_LABELS.index(fusion_lbl)
-                vec[j] += float(src_probs[i])
+    for i, fusion_idx in enumerate(fusion_index_map):
+        vec[fusion_idx] += float(src_probs[i])
     s = vec.sum()
     if s > 0:
         vec = vec / s
     return vec
 
-def _get_label_confidence(src_probs, src_labels, label_map, target_label):
-    prob = 0.0
-    for i, lbl in enumerate(src_labels):
-        if lbl in label_map:
-            fusion_lbl = label_map[lbl]
-            if fusion_lbl == target_label:
-                prob += float(src_probs[i])
-    return prob
+def _label_from_fusion_probs(fusion_probs):
+    if isinstance(fusion_probs, torch.Tensor):
+        idx = int(torch.argmax(fusion_probs).item())
+    else:
+        idx = int(np.argmax(fusion_probs))
+    return FUSION_LABELS[idx]
+
+def _confidence_for_label(fusion_probs, target_label):
+    idx = _FUSION_INDEX[target_label]
+    return float(fusion_probs[idx])
 
 class FusionHead(nn.Module):
     def __init__(self, w_text=0.9, w_video=0.6, w_audio=0.6):
@@ -389,38 +398,55 @@ fusion_head = FusionHead(w_text=0.8, w_video=0.6, w_audio=0.6)
 @torch.no_grad()
 def predict_fusion(text, image_bytes, audio_bytes):
     # text
-    text_pred, text_probs = predict_emotion_text(text)
-    text_vec = _project_probs_to_fusion(text_probs, emotionsList, TEXT_TO_FUSION)
+    text_raw_label, text_probs = predict_emotion_text(text)
+    text_vec = _project_probs_to_fusion(text_probs, TEXT_TO_FUSION_IDX)
+    text_pred = _label_from_fusion_probs(text_vec)
 
     # video (single frame image)
-    face_pred, face_probs = predict_face(image_bytes)
-    face_vec = _project_probs_to_fusion(face_probs, IMAGE_EMOTION_LABELS, FACE_TO_FUSION)
+    face_raw_label, face_probs = predict_face(image_bytes)
+    face_vec = _project_probs_to_fusion(face_probs, FACE_TO_FUSION_IDX)
+    face_pred = _label_from_fusion_probs(face_vec)
 
     # audio
-    audio_pred, audio_probs, _, _ = predict_audio_file(audio_bytes)
-    audio_vec = _project_probs_to_fusion(audio_probs, audio_target_emotions, AUDIO_TO_FUSION)
+    audio_raw_label, audio_probs, _, _ = predict_audio_file(audio_bytes)
+    audio_vec = _project_probs_to_fusion(audio_probs, AUDIO_TO_FUSION_IDX)
+    audio_pred = _label_from_fusion_probs(audio_vec)
 
     fused = fusion_head(text_vec, face_vec, audio_vec)
     pred_idx = int(torch.argmax(fused).item())
     pred_label = FUSION_LABELS[pred_idx]
 
-    # --- GET INDIVIDUAL CONFIDENCES ---
-    text_conf = _get_label_confidence(
-        text_probs, emotionsList, TEXT_TO_FUSION, pred_label
-    )
+    text_conf = _confidence_for_label(text_vec, pred_label)
+    image_conf = _confidence_for_label(face_vec, pred_label)
+    audio_conf = _confidence_for_label(audio_vec, pred_label)
 
-    image_conf = _get_label_confidence(
-        face_probs, IMAGE_EMOTION_LABELS, FACE_TO_FUSION, pred_label
-    )
-
-    audio_conf = _get_label_confidence(
-        audio_probs, audio_target_emotions, AUDIO_TO_FUSION, pred_label
-    )
-
-    return pred_label, fused.cpu().numpy(), {
-        "text_conf":text_conf, 
-        "image_conf":image_conf, 
-        "audio_conf":audio_conf,
-        "text_pred":text_pred,
-        "image_pred":face_pred,
-        "audio_pred":audio_pred,}
+    return {
+        "fusion": {
+            "label": pred_label,
+            "probs": fused.cpu().numpy(),
+            "labels": FUSION_LABELS,
+        },
+        "text": {
+            "label": text_pred,
+            "probs": text_vec.cpu().numpy(),
+            "labels": FUSION_LABELS,
+            "raw_label": text_raw_label,
+        },
+        "image": {
+            "label": face_pred,
+            "probs": face_vec.cpu().numpy(),
+            "labels": FUSION_LABELS,
+            "raw_label": face_raw_label,
+        },
+        "audio": {
+            "label": audio_pred,
+            "probs": audio_vec.cpu().numpy(),
+            "labels": FUSION_LABELS,
+            "raw_label": audio_raw_label,
+        },
+        "confidences": {
+            "text_conf": text_conf,
+            "image_conf": image_conf,
+            "audio_conf": audio_conf,
+        },
+    }

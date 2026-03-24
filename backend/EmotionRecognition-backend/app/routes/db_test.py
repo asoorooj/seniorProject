@@ -33,8 +33,8 @@ def test_insert_evaluation():
 
     evaluation = Evaluation(
         user_id=1,
-        emotionScore=90,
-        emotionLabel="happy",
+        label="happy",
+        scores={"happy": 0.9},
         suggestion="take a short walk",
     )
     db.session.add(evaluation)
@@ -42,20 +42,20 @@ def test_insert_evaluation():
 
     audio = AudioEvalutations(
         evaluation_id=evaluation.id,
-        emotionScore=67,
-        emotionLabel="calm",
+        label="calm",
+        scores={"calm": 0.67},
         data=b"dummy_audio_bytes",
     )
     image = ImageEvalutations(
         evaluation_id=evaluation.id,
-        emotionScore=82,
-        emotionLabel="joy",
+        label="joy",
+        scores={"joy": 0.82},
         data=b"dummy_image_bytes",
     )
     text = TextEvalutations(
         evaluation_id=evaluation.id,
-        emotionScore=93,
-        emotionLabel="neutral",
+        label="neutral",
+        scores={"neutral": 0.93},
         data="dummy text evaluation",
     )
 

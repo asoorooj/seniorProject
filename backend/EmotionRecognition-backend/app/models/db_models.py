@@ -49,30 +49,30 @@ class Evaluation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    emotionScore = db.Column(db.Integer, nullable=False)
-    emotionLabel = db.Column(db.String(8), nullable=False)
+    label = db.Column(db.String(16), nullable=False)
+    scores = db.Column(db.JSON, nullable=False)
     suggestion = db.Column(db.String(64))
 
 class AudioEvalutations(db.Model):
     __tablename__ = "audioEvalutations"
     id = db.Column(db.Integer, primary_key=True)
     evaluation_id = db.Column(db.Integer, db.ForeignKey("evaluations.id"))
-    emotionScore = db.Column(db.Integer, nullable=False)
-    emotionLabel = db.Column(db.String(8), nullable=False)
+    label = db.Column(db.String(16), nullable=False)
+    scores = db.Column(db.JSON, nullable=False)
     data = db.Column(db.LargeBinary)
 
 class ImageEvalutations(db.Model):
     __tablename__ = "imageEvalutations"
     id = db.Column(db.Integer, primary_key=True)
     evaluation_id = db.Column(db.Integer, db.ForeignKey("evaluations.id"))
-    emotionScore = db.Column(db.Integer, nullable=False)
-    emotionLabel = db.Column(db.String(8), nullable=False)
+    label = db.Column(db.String(16), nullable=False)
+    scores = db.Column(db.JSON, nullable=False)
     data = db.Column(db.LargeBinary)
 
 class TextEvalutations(db.Model):
     __tablename__ = "textEvalutations"
     id = db.Column(db.Integer, primary_key=True)
     evaluation_id = db.Column(db.Integer, db.ForeignKey("evaluations.id"))
-    emotionScore = db.Column(db.Integer, nullable=False)
-    emotionLabel = db.Column(db.String(8), nullable=False)
+    label = db.Column(db.String(16), nullable=False)
+    scores = db.Column(db.JSON, nullable=False)
     data = db.Column(db.String(128))
