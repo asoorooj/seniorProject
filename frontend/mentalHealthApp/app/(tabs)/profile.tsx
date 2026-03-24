@@ -17,6 +17,8 @@ import { StoragePermissionsCard } from '@/components/profile/StoragePermissionsC
 import { AccountCard } from '@/components/profile/AccountCard';
 import { DayScore } from '@/components/home/WeeklyChart';
 import { API_BASE } from '@/constants/api';
+import { colors } from '@/assets/styles/colors';
+import { sectionLabel } from "@/assets/styles/text";
 
 // Derive isToday from the current day of the week (0=Sun, 1=Mon, ..., 6=Sat)
 const DAYS: DayScore['day'][] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -125,7 +127,7 @@ export default function ProfileScreen() {
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#9B8FE8" />
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
       </SafeAreaView>
     );
@@ -159,24 +161,24 @@ export default function ProfileScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#9B8FE8"
-            colors={['#9B8FE8']}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
         <ProfileCard {...user} />
 
         <View style={styles.content}>
-          <Text style={styles.sectionLabel}>This Week</Text>
+          <Text style={sectionLabel}>This Week</Text>
           <AvgWellbeingCard data={scores} />
 
-          <Text style={styles.sectionLabel}>Your Emotional Profile</Text>
+          <Text style={sectionLabel}>Your Emotional Profile</Text>
           <EmotionalProfileCard emotions={emotions} />
 
-          <Text style={styles.sectionLabel}>Data & Privacy</Text>
+          <Text style={sectionLabel}>Data & Privacy</Text>
           <StoragePermissionsCard />
 
-          <Text style={styles.sectionLabel}>Account</Text>
+          <Text style={sectionLabel}>Account</Text>
           <AccountCard onSignOut={handleSignOut} />
         </View>
       </ScrollView>
@@ -187,7 +189,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8F5FF',
+    backgroundColor: colors.background,
   },
   scroll: {
     flex: 1,
@@ -201,14 +203,6 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     gap: 12,
   },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#9E8FB8',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginTop: 6,
-  },
   centered: {
     flex: 1,
     alignItems: 'center',
@@ -218,10 +212,10 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#9E8FB8',
+    color: colors.accentDark,
   },
   retryButton: {
-    backgroundColor: '#9B8FE8',
+    backgroundColor: colors.accent,
     paddingHorizontal: 28,
     paddingVertical: 10,
     borderRadius: 20,
@@ -229,6 +223,6 @@ const styles = StyleSheet.create({
   retryText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.surface,
   },
 });

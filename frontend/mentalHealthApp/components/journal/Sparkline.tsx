@@ -1,6 +1,6 @@
 import React from 'react';
 import Svg, { Polyline, Circle, Defs, Filter, FeDropShadow } from 'react-native-svg';
-import { colors } from '@/assets/colors/colors';
+import { colors } from '@/assets/styles/colors';
 
 interface SparklineProps {
     points: number[];

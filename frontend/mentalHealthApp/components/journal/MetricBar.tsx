@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors } from '@/assets/colors/colors';
+import { colors } from '@/assets/styles/colors';
 
 export interface MetricBarData {
     label: string;

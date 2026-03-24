@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { DayScore } from '@/components/home/WeeklyChart';
+import { capsule, colors } from "@/assets/styles/colors";
 
 type Props = {
   data: DayScore[];
@@ -12,7 +13,7 @@ export const AvgWellbeingCard = React.memo(function AvgWellbeingCard({ data }: P
   const maxScore = Math.max(...data.map((d) => d.score), 1);
 
   return (
-    <View style={styles.card}>
+    <View style={capsule}>
       <Text style={styles.title}>Avg Wellbeing</Text>
       <View style={styles.chart}>
         {data.map((item, i) => {
@@ -40,20 +41,10 @@ export const AvgWellbeingCard = React.memo(function AvgWellbeingCard({ data }: P
 });
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#1E1830',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#1E1830',
+    color: colors.textPrimary,
     marginBottom: 18,
   },
   chart: {
@@ -78,15 +69,15 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 8,
   },
   barHighlighted: {
-    backgroundColor: '#F27059',
+    backgroundColor: colors.primary,
   },
   dayLabel: {
     fontSize: 13,
     fontWeight: '400',
-    color: '#9E8FB8',
+    color: colors.accentDark,
   },
   dayLabelHighlighted: {
-    color: '#F27059',
+    color: colors.primary,
     fontWeight: '700',
   },
 });

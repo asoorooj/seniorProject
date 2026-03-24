@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Linking } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { capsule, colors } from "@/assets/styles/colors";
 
 type Permission = {
   id: string;
@@ -24,7 +25,7 @@ export function StoragePermissionsCard() {
   const handleManage = () => Linking.openSettings();
 
   return (
-    <View style={styles.card}>
+    <View style={capsule}>
       <View style={styles.header}>
         <Text style={styles.title}>Storage Permissions</Text>
         <TouchableOpacity onPress={handleManage}>
@@ -53,16 +54,6 @@ export function StoragePermissionsCard() {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#1E1830',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -72,12 +63,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#1E1830',
+    color: colors.textPrimary,
   },
   manage: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#F27059',
+    color: colors.primary,
   },
   row: {
     flexDirection: 'row',
@@ -95,24 +86,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconBoxOn: {
-    backgroundColor: '#4CC9B0',
+    backgroundColor: colors.semantic,
   },
   iconBoxOff: {
-    backgroundColor: '#EDE8F8',
+    backgroundColor: colors.background,
   },
   permName: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#1E1830',
+    color: colors.textPrimary,
   },
   permLabel: {
     fontSize: 11,
     fontWeight: '500',
   },
   labelOn: {
-    color: '#4CC9B0',
+    color: colors.semantic,
   },
   labelOff: {
-    color: '#9E8FB8',
+    color: colors.accentDark,
   },
 });
