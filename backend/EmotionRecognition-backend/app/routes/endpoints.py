@@ -247,8 +247,6 @@ def recieve_eval():
 
         if not audio_b64 or not image_b64 or text is None:
             return jsonify({"error": "Missing required fields"}), 400
-        
-
 
         # Decode base64 → bytes
         audio_bytes = base64.b64decode(audio_b64)
@@ -259,11 +257,13 @@ def recieve_eval():
         print("Image bytes length:", len(image_bytes))
         print("Text:", text)
 
-        label, probabilities = predict_fusion(
+        label, probabilities, dict_of_individual_probabilities = predict_fusion(
             text=text,
             image_bytes=image_bytes,
             audio_bytes=audio_bytes,
         )
+
+        # save_full_evaluation(1,label,)
 
         probs_list = [
             {"label": lbl, "probability": float(prob)}
@@ -284,11 +284,80 @@ def recieve_eval():
             "quick_message": quick_message,
             "audio_size": len(audio_bytes),
             "image_size": len(image_bytes),
-            "text": text
+            "text": text,
+            "MISC_DATA":dict_of_individual_probabilities,
         }), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+def save_full_evaluation(
+    user_id,
+    overall_label,
+    overall_score,
+    text_label,
+    text_score,
+    text_data,
+    image_label,
+    image_score,
+    image_bytes,
+    audio_label,
+    audio_score,
+    audio_bytes,
+    suggestion=None
+):
+    try:
+        # --- 1. Create main evaluation ---
+        evaluation = Evaluation(
+            user_id=user_id,
+            emotionScore=int(overall_score),
+            emotionLabel=overall_label,
+            suggestion=suggestion,
+            timestamp=datetime.utcnow()
+        )
+
+        db.session.add(evaluation)
+        db.session.flush()  # 👈 gets evaluation.id BEFORE commit
+
+        # --- 2. Text ---
+        text_eval = TextEvalutations(
+            evaluation_id=evaluation.id,
+            emotionScore=int(text_score),
+            emotionLabel=text_label,
+            data=text_data
+        )
+
+        # --- 3. Image ---
+        image_eval = ImageEvalutations(
+            evaluation_id=evaluation.id,
+            emotionScore=int(image_score),
+            emotionLabel=image_label,
+            data=image_bytes
+        )
+
+        # --- 4. Audio ---
+        audio_eval = AudioEvalutations(
+            evaluation_id=evaluation.id,
+            emotionScore=int(audio_score),
+            emotionLabel=audio_label,
+            data=audio_bytes
+        )
+
+        # --- 5. Save all ---
+        db.session.add_all([text_eval, image_eval, audio_eval])
+        db.session.commit()
+
+        return {
+            "status": "success",
+            "evaluation_id": evaluation.id
+        }
+
+    except Exception as e:
+        db.session.rollback()
+        return {
+            "status": "error",
+            "message": str(e)
+        }
 
 @api_bp.post("/chat")
 def chat_with_gemini():

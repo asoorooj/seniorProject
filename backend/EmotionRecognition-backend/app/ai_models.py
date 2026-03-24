@@ -347,7 +347,7 @@ FACE_TO_FUSION = {
     "Surprise": "Surprise",
     "Neutral": "Neutral",
 }
-AUDIO_TO_FUSION = {lbl: lbl for lbl in audio_target_emotions}
+AUDIO_TO_FUSION = {lbl: lbl for lbl in audio_target_emotions} # Can we set this statically?
 
 def _project_probs_to_fusion(src_probs, src_labels, label_map):
     vec = torch.zeros(len(FUSION_LABELS), dtype=torch.float32)
@@ -361,6 +361,15 @@ def _project_probs_to_fusion(src_probs, src_labels, label_map):
     if s > 0:
         vec = vec / s
     return vec
+
+def _get_label_confidence(src_probs, src_labels, label_map, target_label):
+    prob = 0.0
+    for i, lbl in enumerate(src_labels):
+        if lbl in label_map:
+            fusion_lbl = label_map[lbl]
+            if fusion_lbl == target_label:
+                prob += float(src_probs[i])
+    return prob
 
 class FusionHead(nn.Module):
     def __init__(self, w_text=0.9, w_video=0.6, w_audio=0.6):
@@ -380,18 +389,38 @@ fusion_head = FusionHead(w_text=0.8, w_video=0.6, w_audio=0.6)
 @torch.no_grad()
 def predict_fusion(text, image_bytes, audio_bytes):
     # text
-    _, text_probs = predict_emotion_text(text)
+    text_pred, text_probs = predict_emotion_text(text)
     text_vec = _project_probs_to_fusion(text_probs, emotionsList, TEXT_TO_FUSION)
 
     # video (single frame image)
-    _, face_probs = predict_face(image_bytes)
+    face_pred, face_probs = predict_face(image_bytes)
     face_vec = _project_probs_to_fusion(face_probs, IMAGE_EMOTION_LABELS, FACE_TO_FUSION)
 
     # audio
-    _, audio_probs, _, _ = predict_audio_file(audio_bytes)
+    audio_pred, audio_probs, _, _ = predict_audio_file(audio_bytes)
     audio_vec = _project_probs_to_fusion(audio_probs, audio_target_emotions, AUDIO_TO_FUSION)
 
     fused = fusion_head(text_vec, face_vec, audio_vec)
     pred_idx = int(torch.argmax(fused).item())
     pred_label = FUSION_LABELS[pred_idx]
-    return pred_label, fused.cpu().numpy()
+
+    # --- GET INDIVIDUAL CONFIDENCES ---
+    text_conf = _get_label_confidence(
+        text_probs, emotionsList, TEXT_TO_FUSION, pred_label
+    )
+
+    image_conf = _get_label_confidence(
+        face_probs, IMAGE_EMOTION_LABELS, FACE_TO_FUSION, pred_label
+    )
+
+    audio_conf = _get_label_confidence(
+        audio_probs, audio_target_emotions, AUDIO_TO_FUSION, pred_label
+    )
+
+    return pred_label, fused.cpu().numpy(), {
+        "text_conf":text_conf, 
+        "image_conf":image_conf, 
+        "audio_conf":audio_conf,
+        "text_pred":text_pred,
+        "image_pred":face_pred,
+        "audio_pred":audio_pred,}
