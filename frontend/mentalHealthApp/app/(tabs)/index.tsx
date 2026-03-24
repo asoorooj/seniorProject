@@ -53,7 +53,7 @@ export default function HomeScreen() {
 
         <View style={styles.body}>
           <RecommendationCard data={RECOMMENDATION} />
-          <CheckInCard onStartScan={() => {}} />
+          <CheckInCard onStartScan={() => router.push('/survey')} />
           <WeeklyChart data={WEEKLY_SCORES} onViewAll={() => {}} />
         </View>
       </ScrollView>
