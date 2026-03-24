@@ -9,6 +9,47 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 _CHAT_STORE = {}
 
+def _extract_gemini_text(response):
+    text = getattr(response, "text", None)
+    if text:
+        return text
+
+    candidates = getattr(response, "candidates", None)
+    if not candidates:
+        return None
+
+    for candidate in candidates:
+        content = getattr(candidate, "content", None)
+        if not content:
+            continue
+        parts = getattr(content, "parts", None) or []
+        for part in parts:
+            part_text = getattr(part, "text", None)
+            if part_text:
+                return part_text
+
+    return None
+
+
+def quickEval(determined_label, emotions_array):
+    chat = client.chats.create(
+        model="gemini-3-flash-preview",
+        config=types.GenerateContentConfig(
+            # system_instruction="You are a helpful mental health tool, trying to provide advice without taking the role of a trained professional."
+            system_instruction="""
+                Give a short, empathetic message given the users determined emotion and emotion readings.
+                """,
+            max_output_tokens=200
+        ),
+    )
+    prompt = (
+        f"Determined label: {determined_label}\n"
+        f"Emotion readings: {emotions_array}\n\n"
+        "Write 1-2 sentences acknowledging the reading and gently checking in."
+    )
+    response = chat.send_message(prompt)
+    return _extract_gemini_text(response) or ""
+
 def createChat():
     chat = client.chats.create(
         model="gemini-3-flash-preview",

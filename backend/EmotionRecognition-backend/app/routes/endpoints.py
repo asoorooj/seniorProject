@@ -1,3 +1,4 @@
+import base64
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
@@ -11,7 +12,10 @@ from app.models.db_models import (
     User,
 )
 
-from app.chatbot_service import createChat, create_chat_with_id, get_chat
+from app.chatbot_service import createChat, create_chat_with_id, get_chat, quickEval
+from app.ai_models import FUSION_LABELS, predict_fusion
+from google.genai import types
+from google import genai
 
 api_bp = Blueprint("api", __name__)
 
@@ -227,6 +231,60 @@ def test_get_evaluations_by_date():
         )
 
     return jsonify(evaluations=payload), 200
+
+@api_bp.post("/recieve_eval_data")
+def recieve_eval():
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"error": "No JSON body provided"}), 400
+
+        # Extract fields
+        audio_b64 = data.get('audio')
+        image_b64 = data.get('image')
+        text = data.get('text')
+
+        if not audio_b64 or not image_b64 or text is None:
+            return jsonify({"error": "Missing required fields"}), 400
+        
+
+
+        # Decode base64 → bytes
+        audio_bytes = base64.b64decode(audio_b64)
+        image_bytes = base64.b64decode(image_b64)
+
+        # --- YOUR LOGIC HERE ---
+        print("Audio bytes length:", len(audio_bytes))
+        print("Image bytes length:", len(image_bytes))
+        print("Text:", text)
+
+        label, probabilities = predict_fusion(
+            text=text,
+            image_bytes=image_bytes,
+            audio_bytes=audio_bytes,
+        )
+
+        probs_list = [
+            {"label": lbl, "probability": float(prob)}
+            for lbl, prob in zip(FUSION_LABELS, probabilities)
+        ]
+
+        quick_message = quickEval(label, probs_list)
+
+        # Example response
+        return jsonify({
+            "message": "Data received successfully",
+            "label": label,
+            "probabilities": probs_list,
+            "quick_message": quick_message,
+            "audio_size": len(audio_bytes),
+            "image_size": len(image_bytes),
+            "text": text
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @api_bp.post("/chat")
 def chat_with_gemini():

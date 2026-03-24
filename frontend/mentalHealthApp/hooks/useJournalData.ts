@@ -71,7 +71,7 @@ async function fetchWeekEntries(weekStart: Date): Promise<RawEntry[]> {
     const entries: RawEntry[] = [];
 
     let asyncFunction = async () =>{
-        let thisItem = await fetch(`http://192.168.1.182:5000/test-db/evaluation/by-date?user_id=1&start_date=${weekStart}`, {
+        let thisItem = await fetch(`http://216.37.99.77:5000/evaluation/by-date?user_id=1&start_date=${weekStart}`, {
             method: 'GET',
             headers: {'Content-Type': 'application/json'}
         });
