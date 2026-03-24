@@ -269,8 +269,12 @@ def recieve_eval():
             {"label": lbl, "probability": float(prob)}
             for lbl, prob in zip(FUSION_LABELS, probabilities)
         ]
+        probs_display = ", ".join(
+            f"{item['label']}: {item['probability'] * 100:.1f}%"
+            for item in probs_list
+        )
 
-        quick_message = quickEval(label, probs_list)
+        quick_message = quickEval(label, probs_display)
 
         # Example response
         return jsonify({
