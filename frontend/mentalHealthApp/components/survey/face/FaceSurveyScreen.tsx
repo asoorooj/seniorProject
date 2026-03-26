@@ -53,18 +53,19 @@ type EmotionResult = {
 // ─── API call ─────────────────────────────────────────────────────────────────
 // Sends base64-encoded image (the "byte array") to the backend.
 // Falls back to placeholder data if the endpoint isn't ready yet.
-async function analyzeImage(base64: string): Promise<EmotionResult> {
+async function analyzeImage(base64: string, evaluationId:number): Promise<EmotionResult> {
   try {
-    const res = await fetch(`${API_BASE}/api/analyze/face`, {
+    const res = await fetch(`${API_BASE}/startevaluation_face`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: base64 }),
+      body: JSON.stringify({ image: base64, evaluationId: evaluationId}),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    console.log(data);
     return {
-      emotion: data.emotion ?? 'Unknown',
-      confidence: typeof data.confidence === 'number' ? data.confidence : 0,
+      emotion: data.image_label ?? 'Unknown',
+      confidence: typeof data.image_scores[data.image_label] === 'number' ? data.image_scores[data.image_label] : 0,
     };
   } catch (err) {
     console.warn('Face analysis API not available, using placeholder:', err);
@@ -253,9 +254,11 @@ function CountdownScreen({ onCapture }: { onCapture: (base64: string) => void })
 // ─── Screen 3: Loading — sends image to backend ───────────────────────────────
 function LoadingScreen({
   image,
+  evaluationId,
   onComplete,
 }: {
   image: string;
+  evaluationId: number | null;
   onComplete: (result: EmotionResult) => void;
 }) {
   const progress = useRef(new Animated.Value(0)).current;
@@ -268,9 +271,12 @@ function LoadingScreen({
       useNativeDriver: false,
     }).start();
 
-    analyzeImage(image).then(result => {
+    if(evaluationId === null) return; //redirect home??
+    analyzeImage(image, evaluationId).then(result => {
       // Wait at least 2.8s so the progress bar finishes before advancing
-      setTimeout(() => onComplete(result), 2800);
+      setTimeout(() => {
+        onComplete(result), 2800
+      });
     });
   }, []);
 
@@ -361,9 +367,27 @@ export default function FaceSurveyScreen() {
   const [capturedImage, setCapturedImage] = useState<string>('');
   const [result,        setResult]        = useState<EmotionResult | null>(null);
   const [permission,    requestPermission] = useCameraPermissions();
-
+  const [evaluationId, setEvaluationId] = useState<number | null>(null);
+  
   const handleBack = () => {
-    if (step === 'intro') router.back();
+    if (step === 'intro'){
+      router.back();
+      const closeEvaluation = async () => {
+      const response = await fetch(`${API_BASE}/endevaluation`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          "evaluationId": evaluationId,
+        })
+      });
+      const responseData:{evaluationId:number} = await response.json();
+      console.log(responseData);
+      };
+      closeEvaluation();
+      setEvaluationId(null);
+    }
     else setStep('intro');
   };
 
@@ -378,6 +402,24 @@ export default function FaceSurveyScreen() {
         );
         return;
       }
+    }
+    const setupEvaluation = async () => {
+      const response = await fetch(`${API_BASE}/startevaluation`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          "userId":1,
+        })
+      });
+      const responseData:{evaluation_id:number} = await response.json();
+      console.log(responseData);
+      setEvaluationId(responseData.evaluation_id);
+    };
+    console.log(evaluationId);
+    if(evaluationId === null){
+      setupEvaluation();
     }
     setStep('countdown');
   };
@@ -403,13 +445,33 @@ export default function FaceSurveyScreen() {
       {step === 'loading'   && (
         <LoadingScreen
           image={capturedImage}
-          onComplete={res => { setResult(res); setStep('result'); }}
+          evaluationId={evaluationId}
+          onComplete={res => { 
+            
+            setResult(res); setStep('result'); }}
         />
       )}
       {step === 'result' && (
         <ResultScreen
           result={result}
-          onContinue={() => router.replace('/(tabs)')} // TODO: wire to voice survey
+          onContinue={() => {
+            const closeEvaluation = async () => {
+              const response = await fetch(`${API_BASE}/endevaluation`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  "evaluationId":evaluationId,
+                })
+              });
+              const responseData:{evaluation_id:number} = await response.json();
+              console.log(responseData);
+              setEvaluationId(responseData.evaluation_id);
+            };
+            closeEvaluation();
+            router.replace('/(tabs)');
+          }} // TODO: wire to voice survey
           onRescan={handleRescan}
         />
       )}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { colors } from '@/assets/styles/colors';
 import { LogEntryData } from '@/components/journal/LogEntry';
+import { API_BASE } from '@/constants/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,6 +62,14 @@ interface RawEntry {
     but we can change if needed
 */}
 
+function maxScore(scores: Record<string, unknown> | null | undefined): number {
+    if (!scores) return 0;
+    const entries = Object.entries(scores).filter(([k]) => k !== '_raw_label');
+    if (entries.length === 0) return 0;
+    const maxVal = Math.max(...entries.map(([, v]) => Number(v) || 0));
+    return Math.round(maxVal * 100);
+}
+
 async function fetchWeekEntries(weekStart: Date): Promise<RawEntry[]> {
     await new Promise(r => setTimeout(r, 450)); // simulate network delay
 
@@ -71,7 +80,7 @@ async function fetchWeekEntries(weekStart: Date): Promise<RawEntry[]> {
     const entries: RawEntry[] = [];
 
     let asyncFunction = async () =>{
-        let thisItem = await fetch(`http://216.37.99.77:5000/evaluation/by-date?user_id=1&start_date=${weekStart}`, {
+        let thisItem = await fetch(`${API_BASE}/evaluation/by-date?user_id=1&start_date=${weekStart.getMonth()+1}/${weekStart.getDate()}/${weekStart.getFullYear()}`, {
             method: 'GET',
             headers: {'Content-Type': 'application/json'}
         });
@@ -80,23 +89,25 @@ async function fetchWeekEntries(weekStart: Date): Promise<RawEntry[]> {
     }
     const data = await asyncFunction();
 
-    let transformedData:any[] = data.evaluations.map((entry: any) => {
+    console.log(data);
+
+    let transformedData: any[] = data.evaluations.map((entry: any) => {
         return {
             id: entry.evaluation.id,
             timestamp: entry.evaluation.timestamp,
-            mood: entry.evaluation.emotionLabel,
-            score: entry.evaluation.emotionScore,
+            mood: entry.evaluation.label ?? 'unknown',
+            score: maxScore(entry.evaluation.scores),
             face: {
-                score: entry.image.emotionScore,
-                label: entry.image.emotionLabel,
+                score: maxScore(entry.image?.scores),
+                label: entry.image?.label ?? 'unknown',
             },
             voice: {
-                score: entry.audio.emotionScore,
-                label: entry.audio.emotionLabel,
+                score: maxScore(entry.audio?.scores),
+                label: entry.audio?.label ?? 'unknown',
             },
             text: {
-                score: entry.text.emotionScore,
-                label: entry.text.emotionLabel,
+                score: maxScore(entry.text?.scores),
+                label: entry.text?.label ?? 'unknown',
             },
             journal_text: null,
             suggestion: entry.evaluation.suggestion,
@@ -187,9 +198,10 @@ function formatTimestamp(iso: string): string {
 
 function transformEntry(raw: RawEntry): LogEntryData {
     const scoreColor = getScoreColor(raw.score);
+    const mood = raw.mood ?? 'unknown';
     return {
         id: raw.id,
-        mood: raw.mood.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        mood: mood.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
         score: raw.score,
         scoreColor,
         dotColor: scoreColor,

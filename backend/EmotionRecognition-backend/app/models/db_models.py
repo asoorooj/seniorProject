@@ -49,8 +49,8 @@ class Evaluation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    label = db.Column(db.String(16), nullable=False)
-    scores = db.Column(db.JSON, nullable=False)
+    label = db.Column(db.String(16), nullable=True)
+    scores = db.Column(db.JSON, nullable=True)
     suggestion = db.Column(db.String(64))
 
 class AudioEvalutations(db.Model):

@@ -20,7 +20,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.cuda.is_available()
 
 #Load values from pretrained model
-textCheckpoint = torch.load("../languageModel/combined_model.pth", map_location=device)
+textCheckpoint = torch.load("./app/modelWeights/combined_model.pth", map_location=device)
 emotionsList = ["sadness", "joy", "love", "anger", "fear", "surprise"]
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
@@ -59,7 +59,9 @@ def predict_emotion_text(text):
         pred = torch.argmax(logits, dim=1).item()
         prob = torch.softmax(logits, dim=1)
 
-    return emotionsList[pred], prob.squeeze().cpu().numpy()
+    probs = prob.squeeze().cpu().numpy()
+    fusion_vec = _project_probs_to_fusion(probs, TEXT_TO_FUSION_IDX).cpu().numpy()
+    return FUSION_LABELS[TEXT_TO_FUSION_IDX[pred]], probs, fusion_vec
 
 num_classes = 7
 IMAGE_EMOTION_LABELS = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral']
@@ -109,7 +111,7 @@ class FERResNet(nn.Module):
 
 
 model = FERResNet(num_classes=num_classes).to(device)
-ckpt  = torch.load("../facialModel/fer_ck_finetuned_inference.pth", map_location=device)
+ckpt  = torch.load("./app/modelWeights/fer_ck_finetuned_inference.pth", map_location=device)
 model.load_state_dict(ckpt['model_state_dict'])
 model.eval()
 
@@ -140,7 +142,9 @@ def predict_face(image_bytes):
 
     print(probs)
 
-    return IMAGE_EMOTION_LABELS[predicted_class], probs.squeeze().cpu().numpy()
+    face_probs = probs.squeeze().cpu().numpy()
+    fusion_vec = _project_probs_to_fusion(face_probs, FACE_TO_FUSION_IDX).cpu().numpy()
+    return FUSION_LABELS[FACE_TO_FUSION_IDX[predicted_class]], face_probs, fusion_vec
 
 audio_target_emotions = ["Anger", "Disgust", "Fear", "Happy", "Neutral", "Sad"]
 
@@ -171,12 +175,12 @@ class AudioEmotionCNN2D(nn.Module):
 
 cnn = AudioEmotionCNN2D(num_classes=len(audio_target_emotions)).to(device)
 
-cnn.load_state_dict(torch.load("../audioModel/audio_model_cnn.pth", map_location=device))
+cnn.load_state_dict(torch.load("./app/modelWeights/audio_model_cnn.pth", map_location=device))
 
 W_CNN = 0.60
 W_SVM = 0.40
 
-svm = joblib.load("../audioModel/svm_model_for_fusion.joblib")
+svm = joblib.load("./app/modelWeights/svm_model_for_fusion.joblib")
 
 TRAINED_COLS = None
 if hasattr(svm, "named_steps") and "scaler" in svm.named_steps and hasattr(svm.named_steps["scaler"], "feature_names_in_"):
@@ -252,8 +256,8 @@ else:
 
 SPLIT_DIR   = "splits_speaker_safe"
 # CNN_LE_PATH = os.path.join(SPLIT_DIR, "../audioModel/label_encoder.joblib")
-le = joblib.load("../audioModel/label_encoder.joblib")
-cnn_classes = list(le.classes_)
+# le = joblib.load("../audioModel/label_encoder.joblib")
+# cnn_classes = list(le.classes_)
 
 # svm_to_cnn_idx = [svm_classes.index(c) for c in cnn_classes]
 svm_to_cnn_idx = [0,1,2,3,4,5]
@@ -261,7 +265,7 @@ svm_to_cnn_idx = [0,1,2,3,4,5]
 
 
 @torch.no_grad()
-def predict_audio_file(audio_bytes, w_cnn=W_CNN, w_svm=W_SVM):
+def predict_audio_file(audio_bytes, w_cnn=W_CNN, w_svm=W_SVM, file_suffix=".wav"):
   
     # Run ONE audio bytes blob through:
     # - CNN (log-mel spectrogram)
@@ -283,7 +287,7 @@ def predict_audio_file(audio_bytes, w_cnn=W_CNN, w_svm=W_SVM):
     # 1) CNN Prediction
     # --------------------
     try:
-        fd, tmp_path = tempfile.mkstemp(suffix=".wav")
+        fd, tmp_path = tempfile.mkstemp(suffix=file_suffix or ".wav")
         with os.fdopen(fd, "wb") as tmp_file:
             tmp_file.write(audio_bytes)
 
@@ -322,9 +326,10 @@ def predict_audio_file(audio_bytes, w_cnn=W_CNN, w_svm=W_SVM):
     ensemble_probs = ensemble_probs / (ensemble_probs.sum() + 1e-12)
 
     pred_idx = np.argmax(ensemble_probs)
-    pred_label = audio_target_emotions[pred_idx]
+    pred_label = FUSION_LABELS[AUDIO_TO_FUSION_IDX[pred_idx]]
+    fusion_vec = _project_probs_to_fusion(ensemble_probs, AUDIO_TO_FUSION_IDX).cpu().numpy()
 
-    return pred_label, ensemble_probs, cnn_probs, svm_probs
+    return pred_label, ensemble_probs, cnn_probs, svm_probs, fusion_vec
 
 # ---- Multimodal fusion (audio + video + text) ----
 FUSION_LABELS = ["Anger", "Disgust", "Fear", "Happy", "Neutral", "Sad", "Surprise"]
@@ -396,29 +401,73 @@ class FusionHead(nn.Module):
 fusion_head = FusionHead(w_text=0.8, w_video=0.6, w_audio=0.6)
 
 @torch.no_grad()
-def predict_fusion(text, image_bytes, audio_bytes):
+def predict_fusion(text, image_bytes, audio_bytes, audio_file_suffix=".wav"):
+    has_text = text is not None
+    has_image = image_bytes is not None
+    has_audio = audio_bytes is not None
+
+    if not (has_text or has_image or has_audio):
+        raise ValueError("didn't send anything")
+
     # text
-    text_raw_label, text_probs = predict_emotion_text(text)
-    text_vec = _project_probs_to_fusion(text_probs, TEXT_TO_FUSION_IDX)
-    text_pred = _label_from_fusion_probs(text_vec)
+    text_raw_label = None
+    text_vec = None
+    text_pred = None
+    if has_text:
+        text_raw_label, text_probs, text_vec_np = predict_emotion_text(text)
+        text_vec = torch.tensor(text_vec_np, dtype=torch.float32)
+        text_pred = _label_from_fusion_probs(text_vec)
 
     # video (single frame image)
-    face_raw_label, face_probs = predict_face(image_bytes)
-    face_vec = _project_probs_to_fusion(face_probs, FACE_TO_FUSION_IDX)
-    face_pred = _label_from_fusion_probs(face_vec)
+    face_raw_label = None
+    face_vec = None
+    face_pred = None
+    if has_image:
+        face_raw_label, face_probs, face_vec_np = predict_face(image_bytes)
+        face_vec = torch.tensor(face_vec_np, dtype=torch.float32)
+        face_pred = _label_from_fusion_probs(face_vec)
 
     # audio
-    audio_raw_label, audio_probs, _, _ = predict_audio_file(audio_bytes)
-    audio_vec = _project_probs_to_fusion(audio_probs, AUDIO_TO_FUSION_IDX)
-    audio_pred = _label_from_fusion_probs(audio_vec)
+    audio_raw_label = None
+    audio_vec = None
+    audio_pred = None
+    if has_audio:
+        audio_raw_label, audio_probs, _, _, audio_vec_np = predict_audio_file(
+            audio_bytes, file_suffix=audio_file_suffix
+        )
+        audio_vec = torch.tensor(audio_vec_np, dtype=torch.float32)
+        audio_pred = _label_from_fusion_probs(audio_vec)
 
-    fused = fusion_head(text_vec, face_vec, audio_vec)
+    # fusion using only available modalities
+    present_vecs = []
+    present_weights = []
+    weights = fusion_head.weights
+
+    if text_vec is not None:
+        present_vecs.append(text_vec)
+        present_weights.append(weights[0])
+    if face_vec is not None:
+        present_vecs.append(face_vec)
+        present_weights.append(weights[1])
+    if audio_vec is not None:
+        present_vecs.append(audio_vec)
+        present_weights.append(weights[2])
+
+    if len(present_vecs) == 1:
+        fused = present_vecs[0]
+    else:
+        stacked = torch.stack(present_vecs, dim=0)
+        w = torch.stack(present_weights, dim=0)
+        w = w / (w.sum() + 1e-12)
+        fused = (w[:, None] * stacked).sum(dim=0)
+        fused = fused / (fused.sum() + 1e-12)
+
     pred_idx = int(torch.argmax(fused).item())
     pred_label = FUSION_LABELS[pred_idx]
 
-    text_conf = _confidence_for_label(text_vec, pred_label)
-    image_conf = _confidence_for_label(face_vec, pred_label)
-    audio_conf = _confidence_for_label(audio_vec, pred_label)
+    text_conf = _confidence_for_label(text_vec, pred_label) if text_vec is not None else None
+    image_conf = _confidence_for_label(face_vec, pred_label) if face_vec is not None else None
+    audio_conf = _confidence_for_label(audio_vec, pred_label) if audio_vec is not None else None
 
     return {
         "fusion": {
@@ -428,19 +477,19 @@ def predict_fusion(text, image_bytes, audio_bytes):
         },
         "text": {
             "label": text_pred,
-            "probs": text_vec.cpu().numpy(),
+            "probs": text_vec.cpu().numpy() if text_vec is not None else None,
             "labels": FUSION_LABELS,
             "raw_label": text_raw_label,
         },
         "image": {
             "label": face_pred,
-            "probs": face_vec.cpu().numpy(),
+            "probs": face_vec.cpu().numpy() if face_vec is not None else None,
             "labels": FUSION_LABELS,
             "raw_label": face_raw_label,
         },
         "audio": {
             "label": audio_pred,
-            "probs": audio_vec.cpu().numpy(),
+            "probs": audio_vec.cpu().numpy() if audio_vec is not None else None,
             "labels": FUSION_LABELS,
             "raw_label": audio_raw_label,
         },
@@ -448,5 +497,86 @@ def predict_fusion(text, image_bytes, audio_bytes):
             "text_conf": text_conf,
             "image_conf": image_conf,
             "audio_conf": audio_conf,
+        },
+    }
+
+@torch.no_grad()
+def predict_fusion_from_probs(
+    text_probs=None,
+    image_probs=None,
+    audio_probs=None,
+):
+    """
+    Fusion helper when per-modality probabilities are already provided.
+    Expects each probs array to be in FUSION_LABELS order.
+    """
+    has_text = text_probs is not None
+    has_image = image_probs is not None
+    has_audio = audio_probs is not None
+
+    if not (has_text or has_image or has_audio):
+        raise ValueError("didn't send anything")
+
+    text_vec = torch.tensor(text_probs, dtype=torch.float32) if has_text else None
+    face_vec = torch.tensor(image_probs, dtype=torch.float32) if has_image else None
+    audio_vec = torch.tensor(audio_probs, dtype=torch.float32) if has_audio else None
+
+    # normalize each input just in case
+    if text_vec is not None:
+        text_vec = text_vec / (text_vec.sum() + 1e-12)
+    if face_vec is not None:
+        face_vec = face_vec / (face_vec.sum() + 1e-12)
+    if audio_vec is not None:
+        audio_vec = audio_vec / (audio_vec.sum() + 1e-12)
+
+    present_vecs = []
+    present_weights = []
+    weights = fusion_head.weights
+
+    if text_vec is not None:
+        present_vecs.append(text_vec)
+        present_weights.append(weights[0])
+    if face_vec is not None:
+        present_vecs.append(face_vec)
+        present_weights.append(weights[1])
+    if audio_vec is not None:
+        present_vecs.append(audio_vec)
+        present_weights.append(weights[2])
+
+    if len(present_vecs) == 1:
+        fused = present_vecs[0]
+    else:
+        stacked = torch.stack(present_vecs, dim=0)
+        w = torch.stack(present_weights, dim=0)
+        w = w / (w.sum() + 1e-12)
+        fused = (w[:, None] * stacked).sum(dim=0)
+        fused = fused / (fused.sum() + 1e-12)
+
+    pred_idx = int(torch.argmax(fused).item())
+    pred_label = FUSION_LABELS[pred_idx]
+
+    return {
+        "fusion": {
+            "label": pred_label,
+            "probs": fused.cpu().numpy(),
+            "labels": FUSION_LABELS,
+        },
+        "text": {
+            "label": _label_from_fusion_probs(text_vec) if text_vec is not None else None,
+            "probs": text_vec.cpu().numpy() if text_vec is not None else None,
+            "labels": FUSION_LABELS,
+            "raw_label": None,
+        },
+        "image": {
+            "label": _label_from_fusion_probs(face_vec) if face_vec is not None else None,
+            "probs": face_vec.cpu().numpy() if face_vec is not None else None,
+            "labels": FUSION_LABELS,
+            "raw_label": None,
+        },
+        "audio": {
+            "label": _label_from_fusion_probs(audio_vec) if audio_vec is not None else None,
+            "probs": audio_vec.cpu().numpy() if audio_vec is not None else None,
+            "labels": FUSION_LABELS,
+            "raw_label": None,
         },
     }

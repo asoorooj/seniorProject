@@ -1,4 +1,5 @@
 import base64
+import os
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
@@ -13,7 +14,14 @@ from app.models.db_models import (
 )
 
 from app.chatbot_service import createChat, create_chat_with_id, get_chat, quickEval
-from app.ai_models import FUSION_LABELS, predict_fusion
+from app.ai_models import (
+    FUSION_LABELS,
+    predict_face,
+    predict_fusion,
+    predict_fusion_from_probs,
+    predict_emotion_text,
+    predict_audio_file,
+)
 from google.genai import types
 from google import genai
 
@@ -55,6 +63,16 @@ def _parse_js_date(value):
         minutes = int(tz_part[3:5])
         offset = timedelta(hours=hours, minutes=minutes) * sign
         return dt.replace(tzinfo=timezone(offset))
+    except Exception:
+        return None
+
+def _parse_mmddyyyy_date(value):
+    # Expected: "MM/dd/yyyy" (e.g., "03/24/2026")
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        dt = datetime.strptime(value, "%m/%d/%Y")
+        return dt.replace(tzinfo=timezone.utc)
     except Exception:
         return None
 
@@ -141,9 +159,11 @@ def test_get_evaluations_by_date():
     if not start_date_raw:
         return jsonify(error="start_date is required"), 400
 
-    start_dt = _parse_js_date(start_date_raw)
+    start_dt = _parse_mmddyyyy_date(start_date_raw)
     if not start_dt:
-        return jsonify(error="start_date format is invalid"), 400
+        start_dt = _parse_js_date(start_date_raw)
+    if not start_dt:
+        return jsonify(error="start_date format is invalid (use MM/dd/yyyy)"), 400
 
     start_utc = start_dt.astimezone(timezone.utc)
     end_utc = start_utc + timedelta(days=7)
@@ -236,22 +256,41 @@ def test_get_evaluations_by_date():
 def recieve_eval():
     user_id = 1
     try:
-        data = request.get_json()
+        audio_file_suffix = ".wav"
 
-        if not data:
-            return jsonify({"error": "No JSON body provided"}), 400
+        if request.mimetype and request.mimetype.startswith("multipart/form-data"):
+            audio_file = request.files.get("audio")
+            image_file = request.files.get("image")
+            text = request.form.get("text")
 
-        # Extract fields
-        audio_b64 = data.get('audio')
-        image_b64 = data.get('image')
-        text = data.get('text')
+            if not audio_file or not image_file or text is None:
+                return jsonify({"error": "Missing required fields"}), 400
 
-        if not audio_b64 or not image_b64 or text is None:
-            return jsonify({"error": "Missing required fields"}), 400
+            audio_bytes = audio_file.read()
+            image_bytes = image_file.read()
 
-        # Decode base64 → bytes
-        audio_bytes = base64.b64decode(audio_b64)
-        image_bytes = base64.b64decode(image_b64)
+            _, ext = os.path.splitext(audio_file.filename or "")
+            if ext:
+                audio_file_suffix = ext
+        elif request.is_json:
+            data = request.get_json()
+
+            if not data:
+                return jsonify({"error": "No JSON body provided"}), 400
+
+            # Extract fields
+            audio_b64 = data.get("audio")
+            image_b64 = data.get("image")
+            text = data.get("text")
+
+            if not audio_b64 or not image_b64 or text is None:
+                return jsonify({"error": "Missing required fields"}), 400
+
+            # Decode base64 -> bytes
+            audio_bytes = base64.b64decode(audio_b64)
+            image_bytes = base64.b64decode(image_b64)
+        else:
+            return jsonify({"error": "Unsupported Media Type. Use multipart/form-data or application/json."}), 415
 
         # --- YOUR LOGIC HERE ---
         print("Audio bytes length:", len(audio_bytes))
@@ -262,6 +301,7 @@ def recieve_eval():
             text=text,
             image_bytes=image_bytes,
             audio_bytes=audio_bytes,
+            audio_file_suffix=audio_file_suffix,
         )
 
         fusion_output = model_outputs["fusion"]
@@ -338,6 +378,22 @@ def _scores_with_raw(labels, probs, raw_label=None):
     if raw_label is not None:
         scores["_raw_label"] = raw_label
     return scores
+
+def _normalize_scores_for_json(scores):
+    if scores is None:
+        return None
+    if isinstance(scores, dict):
+        return {k: float(v) if k != "_raw_label" else v for k, v in scores.items()}
+    # numpy arrays / lists
+    try:
+        return [float(x) for x in scores]
+    except Exception:
+        return scores
+
+def _vector_to_scores_dict(vec):
+    if vec is None:
+        return None
+    return {lbl: float(prob) for lbl, prob in zip(FUSION_LABELS, vec)}
 
 def save_full_evaluation(
     user_id,
@@ -431,6 +487,236 @@ def save_full_evaluation(
             "status": "error",
             "message": str(e)
         }
+    
+@api_bp.post("/startevaluation")
+def start_evaluation():
+    payload = request.get_json(silent=True) or {}
+    user_id = payload.get("userId")
+    try:
+        evaluation = Evaluation(
+            user_id=user_id,
+            label=None,
+            scores=None,
+            suggestion=None,
+            timestamp=datetime.utcnow()
+        )
+        db.session.add(evaluation)
+        db.session.flush() 
+        db.session.commit() 
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "status": "error",
+            "message": "failed to create an evaluation"
+        }), 500
+    return jsonify({
+        "evaluation_id":evaluation.id,
+        "status": "succesfully created evaluation",
+    })
+
+@api_bp.post("/startevaluation_face")
+def start_evaluation_face():
+    payload = request.get_json(silent=True) or {}
+    user_id = payload.get("userId")
+    evaluation_id = payload.get("evaluationId")
+    try:
+        image_bytes = None
+        if request.mimetype and request.mimetype.startswith("multipart/form-data"):
+            image_file = request.files.get("image")
+            image_bytes = image_file.read() if image_file else None
+        elif request.is_json:
+            image_b64 = payload.get("image")
+            if image_b64:
+                    if "," in image_b64:
+                        image_b64 = image_b64.split(",")[1]
+                    image_b64 = image_b64 + '=' * (-len(image_b64) % 4)
+                    image_bytes = base64.b64decode(image_b64)
+        pred, probs, vec = predict_face(image_bytes)
+        image_eval = ImageEvalutations.query.filter_by(
+            evaluation_id=evaluation_id
+        ).first()
+        scores = _vector_to_scores_dict(vec)
+        if image_eval:
+            image_eval.label = pred
+            image_eval.scores = scores
+            image_eval.data = None
+        else:
+            image_eval = ImageEvalutations(
+                evaluation_id=evaluation_id,
+                label=pred,
+                scores=scores,
+                data=None
+            )
+            db.session.add(image_eval)
+        db.session.flush() 
+        db.session.commit() 
+    except Exception as e:        
+        db.session.rollback()
+        print("ERROR:", str(e)) 
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+    return jsonify({
+        "evaluation_id":evaluation_id,
+        "status": "succesfully created evaluation",
+        "image_label":image_eval.label,
+        "image_scores":image_eval.scores,
+    })
+
+@api_bp.post("/startevaluation_text")
+def start_eval_text():
+    payload = request.get_json(silent=True) or {}
+    user_id = payload.get("userId")
+    evaluation_id = payload.get("evaluationId")
+    text = payload.get("text")
+    try:
+        pred, probs, vec = predict_emotion_text(text)
+        text_eval = TextEvalutations.query.filter_by(
+            evaluation_id=evaluation_id
+        ).first()
+        scores = _vector_to_scores_dict(vec)
+        if text_eval:
+            text_eval.label = pred
+            text_eval.scores = scores
+            text_eval.data = text
+        else:
+            text_eval = TextEvalutations(
+                evaluation_id=evaluation_id,
+                label=pred,
+                scores=scores,
+                data=text
+            )
+            db.session.add(text_eval)
+        db.session.flush()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({
+            "status": "error",
+            "message": "failed to create a text evaluation"
+        }), 500
+    return jsonify({
+        "evaluation_id": evaluation_id,
+        "status": "succesfully created evaluation",
+        "text_label":text_eval.label,
+        "text_scores":text_eval.scores,
+    })
+
+@api_bp.post("/startevaluation_audio")
+def start_eval_audio():
+    payload = request.get_json(silent=True) or {}
+    user_id = payload.get("userId")
+    evaluation_id = payload.get("evaluationId")
+    try:
+        audio_bytes = None
+        audio_file_suffix = ".wav"
+        if request.mimetype and request.mimetype.startswith("multipart/form-data"):
+            audio_file = request.files.get("audio")
+            if audio_file:
+                audio_bytes = audio_file.read()
+                _, ext = os.path.splitext(audio_file.filename or "")
+                if ext:
+                    audio_file_suffix = ext
+        elif request.is_json:
+            audio_b64 = payload.get("audio")
+            if audio_b64:
+                audio_bytes = base64.b64decode(audio_b64)
+        pred, probs, _, _, vec = predict_audio_file(audio_bytes, file_suffix=audio_file_suffix)
+        audio_eval = AudioEvalutations.query.filter_by(
+            evaluation_id=evaluation_id
+        ).first()
+        scores = _vector_to_scores_dict(vec)
+        if audio_eval:
+            audio_eval.label = pred
+            audio_eval.scores = scores
+            audio_eval.data = None
+        else:
+            audio_eval = AudioEvalutations(
+                evaluation_id=evaluation_id,
+                label=pred,
+                scores=scores,
+                data=None
+            )
+            db.session.add(audio_eval)
+        db.session.flush()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({
+            "status": "error",
+            "message": "failed to create an audio evaluation"
+        }), 500
+    return jsonify({
+        "evaluation_id": evaluation_id,
+        "status": "succesfully created evaluation",
+        "audio_label":audio_eval.label,
+        "audio_scores":audio_eval.scores,
+    })
+
+def _scores_to_fusion_vector(scores):
+    if scores is None:
+        return None
+    if isinstance(scores, list):
+        return scores
+    if isinstance(scores, dict):
+        return [float(scores.get(lbl, 0.0)) for lbl in FUSION_LABELS]
+    return None
+
+@api_bp.post("/endevaluation")
+def end_evaluation():
+    payload = request.get_json(silent=True) or {}
+    evaluation_id = payload.get("evaluationId")
+    if not evaluation_id:
+        return jsonify({"error": "evaluationId is required"}), 400
+
+    evaluation = Evaluation.query.get(evaluation_id)
+    if not evaluation:
+        return jsonify({"error": "evaluation not found"}), 404
+
+    text_eval = TextEvalutations.query.filter_by(evaluation_id=evaluation_id).first()
+    image_eval = ImageEvalutations.query.filter_by(evaluation_id=evaluation_id).first()
+    audio_eval = AudioEvalutations.query.filter_by(evaluation_id=evaluation_id).first()
+
+    if not (text_eval or image_eval or audio_eval):
+        try:
+            db.session.delete(evaluation)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return jsonify({"status": "error", "message": "failed to delete evaluation"}), 500
+        return jsonify({
+            "status": "deleted",
+            "message": "no sub evaluations found",
+        }), 200
+
+    text_probs = _scores_to_fusion_vector(getattr(text_eval, "scores", None)) if text_eval else None
+    image_probs = _scores_to_fusion_vector(getattr(image_eval, "scores", None)) if image_eval else None
+    audio_probs = _scores_to_fusion_vector(getattr(audio_eval, "scores", None)) if audio_eval else None
+
+    try:
+        fusion_output = predict_fusion_from_probs(
+            text_probs=text_probs,
+            image_probs=image_probs,
+            audio_probs=audio_probs,
+        )
+        fusion_probs = fusion_output["fusion"]["probs"]
+        fusion_label = fusion_output["fusion"]["label"]
+        fusion_scores = {lbl: float(prob) for lbl, prob in zip(FUSION_LABELS, fusion_probs)}
+
+        evaluation.label = fusion_label
+        evaluation.scores = fusion_scores
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+    return jsonify({
+        "status": "updated",
+        "evaluation_id": evaluation_id,
+        "label": fusion_label,
+        "scores": fusion_scores,
+    }), 200
 
 @api_bp.post("/chat")
 def chat_with_gemini():

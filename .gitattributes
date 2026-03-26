@@ -1,1 +1,2 @@
 aiModels/languageModel/combined_model.pth filter=lfs diff=lfs merge=lfs -text
+backend/EmotionRecognition-backend/app/modelWeights/*.pth filter=lfs diff=lfs merge=lfs -text
