@@ -18,6 +18,6 @@ backend/EmotionRecognition-backend/*.sqlite3
 backend/EmotionRecognition-backend/.venv/
 backend/EmotionRecognition-backend/venv/
 backend/EmotionRecognition-backend/migrations/versions
-backend/EmotionRecognition-backend/app/modelWeights/
+backend/EmotionRecognition-backend/app/modelWeights/*
 
 /.vscode
