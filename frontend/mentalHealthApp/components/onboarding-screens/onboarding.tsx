@@ -5,75 +5,96 @@ import {
   View,
   Image,
   TouchableOpacity,
+  ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+
+  const isWide = width >= 900;
+  const isTablet = width >= 700;
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Image
-        source={require('../../assets/images/logo.png')}
-        style={styles.logo}
-        resizeMode="contain"
-      />
-
-      <Text style={styles.title}>Understand Yourself Better</Text>
-
-      <Text style={styles.description}>
-        We use advanced AI to analyze your voice, facial expressions, and words
-        to help you understand and enhance your emotional well-being.
-      </Text>
-
-      <View style={[styles.featureRow, styles.voiceRow]}>
-        <Image
-          source={require('../../assets/images/fi-rs-microphone.png')}
-          style={styles.icon}
-        />
-        <Text style={styles.featureText}>
-          Voice: For tone of voice understanding
-        </Text>
-      </View>
-
-      <View style={[styles.featureRow, styles.facialRow]}>
-        <Image
-          source={require('../../assets/images/fi-rs-camera.png')}
-          style={styles.icon}
-        />
-        <Text style={styles.featureText}>
-          Facial: For expression analysis
-        </Text>
-      </View>
-
-      <View style={[styles.featureRow, styles.wordsRow]}>
-        <Image
-          source={require('../../assets/images/fi-rs-comment.png')}
-          style={styles.icon}
-        />
-        <Text style={styles.featureText}>
-          Words: For journaling and text inputs
-        </Text>
-      </View>
-
-      <TouchableOpacity
-        style={styles.continueButton}
-        activeOpacity={0.8}
-        onPress={() => router.push('/survey')}
+    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isWide && styles.scrollContentWide,
+        ]}
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.continueButtonText}>Continue</Text>
-      </TouchableOpacity>
+        <View style={[styles.contentWrapper, isWide && styles.contentWrapperWide]}>
+          <Image
+            source={require('../../assets/images/logo.png')}
+            style={[styles.logo, isTablet && styles.logoTablet]}
+            resizeMode="contain"
+          />
 
-      <View style={styles.privacyRow}>
-        <Image
-          source={require('../../assets/images/fi-rs-shield-check.png')}
-          style={styles.icon}
-        />
-        <Text style={styles.privacyText}>
-          Your privacy is deeply respected
-        </Text>
-      </View>
+          <Text style={[styles.title, isTablet && styles.titleTablet]}>
+            Understand Yourself Better
+          </Text>
+
+          <Text style={[styles.description, isTablet && styles.descriptionTablet]}>
+            We use advanced AI to analyze your voice, facial expressions, and words
+            to help you understand and enhance your emotional well-being.
+          </Text>
+
+          <View style={[styles.features, isWide && styles.featuresWide]}>
+            <View style={styles.featureRow}>
+              <Image
+                source={require('../../assets/images/fi-rs-microphone.png')}
+                style={styles.icon}
+              />
+              <Text style={styles.featureText}>
+                Voice: For tone of voice understanding
+              </Text>
+            </View>
+
+            <View style={styles.featureRow}>
+              <Image
+                source={require('../../assets/images/fi-rs-camera.png')}
+                style={styles.icon}
+              />
+              <Text style={styles.featureText}>
+                Facial: For expression analysis
+              </Text>
+            </View>
+
+            <View style={styles.featureRow}>
+              <Image
+                source={require('../../assets/images/fi-rs-comment.png')}
+                style={styles.icon}
+              />
+              <Text style={styles.featureText}>
+                Words: For journaling and text inputs
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.continueButton, isWide && styles.continueButtonWide]}
+            activeOpacity={0.8}
+            onPress={() => router.push('/survey')}
+          >
+            <Text style={styles.continueButtonText}>Continue</Text>
+          </TouchableOpacity>
+
+          <View style={styles.privacyRow}>
+            <Image
+              source={require('../../assets/images/fi-rs-shield-check.png')}
+              style={styles.icon}
+            />
+            <Text style={styles.privacyText}>
+              Your privacy is deeply respected
+            </Text>
+          </View>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -82,15 +103,94 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8F5FF',
+  },
+
+  scroll: {
+    flex: 1,
+    backgroundColor: '#F8F5FF',
+  },
+
+  scrollContent: {
+    paddingHorizontal: 28,
+    paddingTop: 56,
+    paddingBottom: 40,
+  },
+
+  scrollContentWide: {
+    flexGrow: 1,
+    justifyContent: 'center',
     alignItems: 'center',
   },
 
+  contentWrapper: {
+    width: '100%',
+    alignItems: 'center',
+  },
+
+  contentWrapperWide: {
+    maxWidth: 860,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+    borderRadius: 28,
+    paddingHorizontal: 36,
+    paddingVertical: 40,
+  },
+
   logo: {
-    position: 'absolute',
     width: 141,
-    height: 106,
-    top: 118,
-    left: 124,
+    height: 176,
+    marginBottom: 28,
+  },
+
+  logoTablet: {
+    marginBottom: 32,
+  },
+
+  title: {
+    width: '100%',
+    fontSize: 32,
+    fontWeight: '700',
+    lineHeight: 38,
+    textAlign: 'center',
+    color: '#1E1830',
+    marginBottom: 40,
+  },
+
+  titleTablet: {
+    fontSize: 24,
+    lineHeight: 32,
+  },
+
+  description: {
+    width: '100%',
+    maxWidth: 720,
+    fontSize: 16,
+    fontWeight: '400',
+    lineHeight: 28,
+    color: '#1E1830',
+    opacity: 0.85,
+    marginBottom: 40,
+  },
+
+  descriptionTablet: {
+    maxWidth: 720,
+  },
+
+  features: {
+    width: '100%',
+    marginBottom: 40,
+  },
+
+  featuresWide: {
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
+  },
+
+  featureRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 22,
   },
 
   icon: {
@@ -99,65 +199,18 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
   },
 
-  title: {
-    position: 'absolute',
-    width: 310,
-    top: 292,
-    left: 40,
-    fontSize: 24,
-    fontWeight: '700',
-    lineHeight: 29,
-    textAlign: 'center',
-    color: '#1E1830',
-  },
-
-  description: {
-    position: 'absolute',
-    width: 320,
-    top: 348,
-    left: 35,
-    fontSize: 20,
-    fontWeight: '500',
-    lineHeight: 24,
-    textAlign: 'center',
-    color: '#1E1830',
-  },
-
-  featureRow: {
-    position: 'absolute',
-    width: 300,
-    flexDirection: 'row',
-    alignItems: 'center',
-    left: 54,
-  },
-
-  voiceRow: {
-    top: 474,
-  },
-
-  facialRow: {
-    top: 533,
-  },
-
-  wordsRow: {
-    top: 570,
-  },
-
   featureText: {
-    marginLeft: 10,
-    fontSize: 18,
-    fontWeight: '500',
-    lineHeight: 22,
+    marginLeft: 14,
+    fontSize: 16,
+    fontWeight: '400',
+    lineHeight: 24,
     color: '#1E1830',
-    flexShrink: 1,
+    flex: 1,
   },
 
   continueButton: {
-    position: 'absolute',
-    width: 323,
-    height: 46,
-    top: 634,
-    left: 34,
+    width: '100%',
+    height: 52,
     backgroundColor: '#F27059',
     borderRadius: 12,
     justifyContent: 'center',
@@ -167,10 +220,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 4,
+    marginBottom: 24,
+  },
+
+  continueButtonWide: {
+    maxWidth: 720,
   },
 
   continueButtonText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
     lineHeight: 24,
     textAlign: 'center',
@@ -178,20 +236,19 @@ const styles = StyleSheet.create({
   },
 
   privacyRow: {
-    position: 'absolute',
-    top: 711,
-    left: 54,
-    width: 282,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    maxWidth: 500,
   },
 
   privacyText: {
     marginLeft: 10,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '400',
     lineHeight: 22,
     color: '#1E1830',
     textAlign: 'center',
+    flexShrink: 1,
   },
 });
