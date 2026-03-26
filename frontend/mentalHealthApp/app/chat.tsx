@@ -28,7 +28,7 @@ export default function ChatScreen() {
           style={styles.mainAvatar}
         >
           <Image
-            source={require("../assets/images/graphic.png")}
+            source={require("../assets/images/kokoro_white_logo.png")}
             style={styles.logoImage}
             resizeMode="contain"
           />
@@ -70,7 +70,7 @@ export default function ChatScreen() {
             style={styles.smallAvatar}
           >
             <Image
-              source={require("../assets/images/graphic.png")}
+              source={require("../assets/images/kokoro_white_logo.png")}
               style={styles.smallLogoImage}
               resizeMode="contain"
             />
@@ -105,7 +105,7 @@ export default function ChatScreen() {
             style={styles.smallAvatar}
           >
             <Image
-              source={require("../assets/images/graphic.png")}
+              source={require("../assets/images/kokoro_white_logo.png")}
               style={styles.smallLogoImage}
               resizeMode="contain"
             />
@@ -188,8 +188,8 @@ const styles = StyleSheet.create({
   },
 
   logoImage: {
-    width: 80,
-    height: 80,
+    width: 90,
+    height: 90,
   },
 
   headerTextWrap: {
@@ -297,8 +297,8 @@ const styles = StyleSheet.create({
   },
 
   smallLogoImage: {
-    width: 32,
-    height: 32,
+    width: 42,
+    height: 42,
   },
 
   aiBubble: {
