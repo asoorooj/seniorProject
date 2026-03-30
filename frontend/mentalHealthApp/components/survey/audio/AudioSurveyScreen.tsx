@@ -9,10 +9,10 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Audio } from 'expo-av';
 
 import { API_BASE } from '@/constants/api';
 
@@ -20,10 +20,11 @@ import { API_BASE } from '@/constants/api';
 const BG           = '#1E1830';
 const CIRCLE_DARK  = '#191638';
 const CIRCLE_MID   = '#23204A';
-const PURPLE       = '#7B6FD8';
+const ORANGE       = '#CF5B3C';
+const ORANGE_DIM   = '#3D2820';
 const TEXT_PRIMARY = '#FFFFFF';
 const TEXT_MUTED   = '#8B87A8';
-const TAB_ACTIVE   = '#353060';
+const TAB_ACTIVE   = '#352A20';
 const CARD_BG      = '#252245';
 const TRACK_COLOR  = '#3D3870';
 
@@ -33,16 +34,15 @@ const BRACKET_LEN  = 24;
 const BRACKET_W    = 2.5;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type FaceStep = 'intro' | 'countdown' | 'loading' | 'result';
+type AudioStep = 'intro' | 'recording' | 'loading' | 'result';
 
-// Maps raw model labels → grammatically correct display copy
 const EMOTION_DISPLAY: Record<string, string> = {
   Angry:    'angry',
   Fear:     'fearful',
   Happy:    'happy',
   Sad:      'sad',
   Surprise: 'surprised',
-  Neutral:  'neutral',
+  Neutral:  'calm',
 };
 
 type EmotionResult = {
@@ -51,26 +51,33 @@ type EmotionResult = {
 };
 
 // ─── API call ─────────────────────────────────────────────────────────────────
-// Sends base64-encoded image (the "byte array") to the backend.
-// Falls back to placeholder data if the endpoint isn't ready yet.
-async function analyzeImage(base64: string, evaluationId:number): Promise<EmotionResult> {
+async function analyzeAudio(uri: string, evaluationId: number): Promise<EmotionResult> {
   try {
-    const res = await fetch(`${API_BASE}/startevaluation_face`, {
+    const formData = new FormData();
+    formData.append('audio', {
+      uri,
+      type: 'audio/m4a',
+      name: 'recording.m4a',
+    } as any);
+    formData.append('evaluationId', String(evaluationId));
+
+    const res = await fetch(`${API_BASE}/startevaluation_audio`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: base64, evaluationId: evaluationId}),
+      body: formData,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    console.log(data);
+    console.log('Audio analysis:', data);
     return {
-      emotion: data.image_label ?? 'Unknown',
-      confidence: typeof data.image_scores[data.image_label] === 'number' ? data.image_scores[data.image_label] : 0,
+      emotion: data.audio_label ?? 'Unknown',
+      confidence:
+        typeof data.audio_scores?.[data.audio_label] === 'number'
+          ? data.audio_scores[data.audio_label]
+          : 0,
     };
   } catch (err) {
-    console.warn('Face analysis API not available, using placeholder:', err);
-    // Placeholder until the backend endpoint is live
-    return { emotion: 'Happy', confidence: 0.87 };
+    console.warn('Audio analysis API not available, using placeholder:', err);
+    return { emotion: 'Neutral', confidence: 0.72 };
   }
 }
 
@@ -88,9 +95,9 @@ function SurveyHeader({ onBack }: { onBack: () => void }) {
   return (
     <View style={styles.header}>
       <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-        <Feather name="arrow-left" size={22} color={PURPLE} />
+        <Feather name="arrow-left" size={22} color={ORANGE} />
       </TouchableOpacity>
-      <Text style={styles.stepLabel}>Step 1 of 3</Text>
+      <Text style={styles.stepLabel}>Step 2 of 3</Text>
       <View style={{ width: 22 }} />
     </View>
   );
@@ -101,8 +108,8 @@ function StepTabs() {
   return (
     <View style={styles.tabRow}>
       {(['Face', 'Voice', 'Text'] as const).map((label, i) => (
-        <View key={label} style={[styles.tab, i === 0 && styles.tabActive]}>
-          <Text style={[styles.tabText, i === 0 && styles.tabTextActive]}>{label}</Text>
+        <View key={label} style={[styles.tab, i === 1 && styles.tabActive]}>
+          <Text style={[styles.tabText, i === 1 && styles.tabTextActive]}>{label}</Text>
         </View>
       ))}
     </View>
@@ -128,10 +135,61 @@ function CircleFrame({ children, size }: { children?: React.ReactNode; size: num
         </View>
       </View>
 
-      <View style={[styles.bracket, { top: 0, left: 0, borderTopWidth: bw, borderLeftWidth: bw, borderColor: PURPLE, width: B, height: B }]} />
-      <View style={[styles.bracket, { top: 0, right: 0, borderTopWidth: bw, borderRightWidth: bw, borderColor: PURPLE, width: B, height: B }]} />
-      <View style={[styles.bracket, { bottom: 0, left: 0, borderBottomWidth: bw, borderLeftWidth: bw, borderColor: PURPLE, width: B, height: B }]} />
-      <View style={[styles.bracket, { bottom: 0, right: 0, borderBottomWidth: bw, borderRightWidth: bw, borderColor: PURPLE, width: B, height: B }]} />
+      <View style={[styles.bracket, { top: 0, left: 0, borderTopWidth: bw, borderLeftWidth: bw, borderColor: ORANGE, width: B, height: B }]} />
+      <View style={[styles.bracket, { top: 0, right: 0, borderTopWidth: bw, borderRightWidth: bw, borderColor: ORANGE, width: B, height: B }]} />
+      <View style={[styles.bracket, { bottom: 0, left: 0, borderBottomWidth: bw, borderLeftWidth: bw, borderColor: ORANGE, width: B, height: B }]} />
+      <View style={[styles.bracket, { bottom: 0, right: 0, borderBottomWidth: bw, borderRightWidth: bw, borderColor: ORANGE, width: B, height: B }]} />
+    </View>
+  );
+}
+
+// ─── Animated waveform bars ───────────────────────────────────────────────────
+const BAR_COUNT  = 16;
+const BAR_MAX_H  = 44;
+const BAR_MIN_H  = 6;
+
+function WaveformBars({ active }: { active: boolean }) {
+  const bars = useRef(
+    Array.from({ length: BAR_COUNT }, () => new Animated.Value(BAR_MIN_H))
+  ).current;
+  const loopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    if (active) {
+      const animations = bars.map((bar, i) =>
+        Animated.loop(
+          Animated.sequence([
+            Animated.delay(i * 60),
+            Animated.timing(bar, {
+              toValue: BAR_MIN_H + Math.random() * (BAR_MAX_H - BAR_MIN_H),
+              duration: 280 + Math.random() * 220,
+              useNativeDriver: false,
+            }),
+            Animated.timing(bar, {
+              toValue: BAR_MIN_H,
+              duration: 280 + Math.random() * 220,
+              useNativeDriver: false,
+            }),
+          ])
+        )
+      );
+      loopRef.current = Animated.parallel(animations);
+      loopRef.current.start();
+    } else {
+      loopRef.current?.stop();
+      bars.forEach(b => b.setValue(BAR_MIN_H));
+    }
+    return () => loopRef.current?.stop();
+  }, [active]);
+
+  return (
+    <View style={styles.waveformRow}>
+      {bars.map((bar, i) => (
+        <Animated.View
+          key={i}
+          style={[styles.waveBar, { height: bar }]}
+        />
+      ))}
     </View>
   );
 }
@@ -139,7 +197,7 @@ function CircleFrame({ children, size }: { children?: React.ReactNode; size: num
 // ─── Screen 1: Intro ──────────────────────────────────────────────────────────
 function IntroScreen({ onBegin }: { onBegin: () => void }) {
   const pulseScale   = useRef(new Animated.Value(1)).current;
-  const pulseOpacity = useRef(new Animated.Value(0.5)).current;
+  const pulseOpacity = useRef(new Animated.Value(0.45)).current;
 
   useEffect(() => {
     Animated.loop(
@@ -149,8 +207,8 @@ function IntroScreen({ onBegin }: { onBegin: () => void }) {
           Animated.timing(pulseOpacity, { toValue: 0,    duration: 1200, useNativeDriver: true }),
         ]),
         Animated.parallel([
-          Animated.timing(pulseScale,   { toValue: 1,   duration: 0, useNativeDriver: true }),
-          Animated.timing(pulseOpacity, { toValue: 0.5, duration: 0, useNativeDriver: true }),
+          Animated.timing(pulseScale,   { toValue: 1,    duration: 0, useNativeDriver: true }),
+          Animated.timing(pulseOpacity, { toValue: 0.45, duration: 0, useNativeDriver: true }),
         ]),
       ])
     ).start();
@@ -161,8 +219,10 @@ function IntroScreen({ onBegin }: { onBegin: () => void }) {
   return (
     <FadeInView>
       <View style={styles.textZone}>
-        <Text style={styles.title}>{"Let's Read Your\nExpression"}</Text>
-        <Text style={styles.subtitle}>{"Give us a quick look. Your\nface says a lot!"}</Text>
+        <Text style={styles.title}>{"Now Let's Hear You"}</Text>
+        <Text style={styles.subtitle}>
+          {"Talk for a few seconds. We'll\nlisten for emotional clues\nin your tone."}
+        </Text>
       </View>
       <View style={styles.circleZone}>
         <View style={{ width: pulseSize, height: pulseSize, alignItems: 'center', justifyContent: 'center' }}>
@@ -176,7 +236,10 @@ function IntroScreen({ onBegin }: { onBegin: () => void }) {
           />
           <TouchableOpacity onPress={onBegin} activeOpacity={0.85}>
             <CircleFrame size={CIRCLE_SIZE}>
-              <Text style={styles.tapToBegin}>TAP TO BEGIN</Text>
+              <View style={styles.micContainer}>
+                <Feather name="mic" size={CIRCLE_SIZE * 0.28} color={ORANGE} />
+                <Text style={styles.startLabel}>Start Recording</Text>
+              </View>
             </CircleFrame>
           </TouchableOpacity>
         </View>
@@ -185,98 +248,105 @@ function IntroScreen({ onBegin }: { onBegin: () => void }) {
   );
 }
 
-// ─── Screen 2: Countdown with live camera preview ─────────────────────────────
-function CountdownScreen({ onCapture }: { onCapture: (base64: string) => void }) {
-  const [count, setCount]   = useState(3);
-  const cameraRef           = useRef<CameraView>(null);
-  const numScale            = useRef(new Animated.Value(1.3)).current;
-  const numOpacity          = useRef(new Animated.Value(0)).current;
-  const capturedRef         = useRef(false); // prevent double capture
+// ─── Screen 2: Active recording ───────────────────────────────────────────────
+function RecordingScreen({ onStop }: { onStop: (uri: string) => void }) {
+  const [elapsed, setElapsed] = useState(0);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const startedRef   = useRef(false);
 
-  const takePicture = async () => {
-    if (capturedRef.current || !cameraRef.current) return;
-    capturedRef.current = true;
-    try {
-      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.7 });
-      onCapture(photo?.base64 ?? '');
-    } catch (err) {
-      console.warn('Camera capture failed:', err);
-      onCapture(''); // proceed without image — API will use fallback
-    }
+  const formatTime = (s: number) => {
+    const mm = String(Math.floor(s / 60)).padStart(2, '0');
+    const ss = String(s % 60).padStart(2, '0');
+    return `${mm}:${ss}`;
   };
 
   useEffect(() => {
-    if (count === 0) {
-      takePicture();
-      return;
-    }
-    // Pop-in animation per tick
-    numScale.setValue(1.3);
-    numOpacity.setValue(0);
-    Animated.parallel([
-      Animated.spring(numScale,   { toValue: 1, useNativeDriver: true, tension: 200, friction: 12 }),
-      Animated.timing(numOpacity, { toValue: 1, duration: 200,          useNativeDriver: true }),
-    ]).start();
+    const startRecording = async () => {
+      if (startedRef.current) return;
+      startedRef.current = true;
+      try {
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        const { recording } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
+        recordingRef.current = recording;
+      } catch (err) {
+        console.warn('Failed to start recording:', err);
+      }
+    };
+    startRecording();
 
-    const t = setTimeout(() => setCount(c => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [count]);
+    const timer = setInterval(() => setElapsed(e => e + 1), 1000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+
+  const handleStop = async () => {
+    try {
+      if (recordingRef.current) {
+        await recordingRef.current.stopAndUnloadAsync();
+        const uri = recordingRef.current.getURI() ?? '';
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+        onStop(uri);
+      } else {
+        onStop('');
+      }
+    } catch (err) {
+      console.warn('Failed to stop recording:', err);
+      onStop('');
+    }
+  };
 
   return (
     <FadeInView>
       <View style={styles.textZone}>
-        <Text style={styles.title}>Get Ready...</Text>
-        <Text style={styles.subtitle}>Prepping camera</Text>
+        <Text style={styles.title}>Listening ...</Text>
+        <Text style={styles.subtitle}>{"Keep talking. You're doing great!"}</Text>
       </View>
       <View style={styles.circleZone}>
-        <CircleFrame size={CIRCLE_SIZE}>
-          {/* Live front-camera preview fills the circle */}
-          <CameraView
-            ref={cameraRef}
-            facing="front"
-            style={StyleSheet.absoluteFill}
-          />
-          {/* Countdown number overlaid on top of camera */}
-          <Animated.Text
-            style={[
-              styles.countdownNumber,
-              { transform: [{ scale: numScale }], opacity: numOpacity },
-            ]}
-          >
-            {count > 0 ? count : ''}
-          </Animated.Text>
-        </CircleFrame>
+        <TouchableOpacity onPress={handleStop} activeOpacity={0.9}>
+          <CircleFrame size={CIRCLE_SIZE}>
+            <View style={styles.micContainer}>
+              <Feather name="mic" size={CIRCLE_SIZE * 0.28} color={ORANGE} />
+              <View style={styles.recRow}>
+                <View style={styles.recDot} />
+                <Text style={styles.recLabel}>REC</Text>
+              </View>
+              <Text style={styles.timerLabel}>{formatTime(elapsed)}</Text>
+            </View>
+          </CircleFrame>
+        </TouchableOpacity>
+
+        <WaveformBars active={true} />
+        <Text style={styles.tapToStop}>Tap anytime to stop</Text>
       </View>
     </FadeInView>
   );
 }
 
-// ─── Screen 3: Loading — sends image to backend ───────────────────────────────
+// ─── Screen 3: Loading ────────────────────────────────────────────────────────
 function LoadingScreen({
-  image,
+  uri,
   evaluationId,
   onComplete,
 }: {
-  image: string;
+  uri: string;
   evaluationId: number | null;
   onComplete: (result: EmotionResult) => void;
 }) {
   const progress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Animate progress bar in parallel with API call
     Animated.timing(progress, {
       toValue: 1,
       duration: 2800,
       useNativeDriver: false,
     }).start();
 
-    if(evaluationId === null) return; //redirect home??
-    analyzeImage(image, evaluationId).then(result => {
-      // Wait at least 2.8s so the progress bar finishes before advancing
-      setTimeout(() => {
-        onComplete(result), 2800
-      });
+    if (evaluationId === null) return;
+    analyzeAudio(uri, evaluationId).then(result => {
+      setTimeout(() => onComplete(result), 2800);
     });
   }, []);
 
@@ -288,17 +358,17 @@ function LoadingScreen({
   return (
     <FadeInView>
       <View style={styles.textZone}>
-        <Text style={styles.title}>Hold Still ...</Text>
-        <Text style={styles.subtitle}>{"We're picking up on your vibe."}</Text>
+        <Text style={styles.title}>Almost There ...</Text>
+        <Text style={styles.subtitle}>{"Reading between the lines\nof your voice."}</Text>
       </View>
       <View style={styles.circleZone}>
         <CircleFrame size={CIRCLE_SIZE}>
-          <View style={styles.avatarPlaceholder}>
-            <Feather name="user" size={CIRCLE_SIZE * 0.42} color={PURPLE} />
+          <View style={styles.micContainer}>
+            <Feather name="mic" size={CIRCLE_SIZE * 0.28} color={ORANGE} />
           </View>
         </CircleFrame>
         <View style={styles.progressContainer}>
-          <Text style={styles.progressLabel}>Reading your expression...</Text>
+          <Text style={styles.progressLabel}>Analyzing your tone...</Text>
           <View style={styles.progressTrack}>
             <Animated.View style={[styles.progressBar, { width: barWidth }]} />
           </View>
@@ -312,11 +382,11 @@ function LoadingScreen({
 function ResultScreen({
   result,
   onContinue,
-  onRescan,
+  onRerecord,
 }: {
   result: EmotionResult | null;
   onContinue: () => void;
-  onRescan: () => void;
+  onRerecord: () => void;
 }) {
   const rawEmotion = result?.emotion ?? 'Unknown';
   const emotion    = EMOTION_DISPLAY[rawEmotion] ?? rawEmotion.toLowerCase();
@@ -329,8 +399,10 @@ function ResultScreen({
         <View style={styles.checkCircle}>
           <Feather name="check" size={30} color={TEXT_PRIMARY} />
         </View>
-        <Text style={[styles.title, { marginBottom: 8 }]}>Got it!</Text>
-        <Text style={[styles.subtitle, { marginBottom: 20 }]}>{"Here's what we're seeing..."}</Text>
+        <Text style={[styles.title, { marginBottom: 8 }]}>Nice!</Text>
+        <Text style={[styles.subtitle, { marginBottom: 20 }]}>
+          {"We're tuning into your tone..."}
+        </Text>
 
         <View style={styles.resultCard}>
           <View style={styles.emojiRing}>
@@ -340,7 +412,7 @@ function ResultScreen({
             </View>
             <View style={styles.smileCurve} />
           </View>
-          <Text style={styles.emotionLabel}>You look {emotion.toLowerCase()}</Text>
+          <Text style={styles.emotionLabel}>You sound {emotion}</Text>
           <Text style={styles.confidenceLabel}>Confidence: {pct}%</Text>
           <View style={styles.confidenceTrack}>
             <View style={[styles.confidenceBar, { width: `${pct}%` }]} />
@@ -350,10 +422,10 @@ function ResultScreen({
 
       <View style={styles.resultActions}>
         <TouchableOpacity style={styles.ctaButton} onPress={onContinue} activeOpacity={0.85}>
-          <Text style={styles.ctaButtonText}>{"Let's Check Your Voice"}</Text>
+          <Text style={styles.ctaButtonText}>{"On to Your Words"}</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onRescan} activeOpacity={0.7} style={{ marginTop: 14 }}>
-          <Text style={styles.rescanText}>Re-scan</Text>
+        <TouchableOpacity onPress={onRerecord} activeOpacity={0.7} style={{ marginTop: 14 }}>
+          <Text style={styles.rerecordText}>Re-record</Text>
         </TouchableOpacity>
       </View>
     </FadeInView>
@@ -361,76 +433,40 @@ function ResultScreen({
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
-export default function FaceSurveyScreen() {
+export default function AudioSurveyScreen() {
   const router = useRouter();
-  const [step,          setStep]          = useState<FaceStep>('intro');
-  const [capturedImage, setCapturedImage] = useState<string>('');
-  const [result,        setResult]        = useState<EmotionResult | null>(null);
-  const [permission,    requestPermission] = useCameraPermissions();
-  const [evaluationId, setEvaluationId] = useState<number | null>(null);
-  
+  const params = useLocalSearchParams<{ evaluationId?: string }>();
+  const evaluationId = params.evaluationId ? Number(params.evaluationId) : null;
+
+  const [step,   setStep]   = useState<AudioStep>('intro');
+  const [uri,    setUri]    = useState('');
+  const [result, setResult] = useState<EmotionResult | null>(null);
+
   const handleBack = () => {
-    if (step === 'intro'){
-      router.back();
-      const closeEvaluation = async () => {
-      const response = await fetch(`${API_BASE}/endevaluation`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          "evaluationId": evaluationId,
-        })
-      });
-      const responseData:{evaluationId:number} = await response.json();
-      console.log(responseData);
-      };
-      closeEvaluation();
-      setEvaluationId(null);
-    }
+    if (step === 'intro') router.back();
     else setStep('intro');
   };
 
   const handleBegin = async () => {
-    if (!permission?.granted) {
-      const { granted } = await requestPermission();
-      if (!granted) {
-        Alert.alert(
-          'Camera Access Required',
-          'Please allow camera access in Settings to scan your expression.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
+    const { granted } = await Audio.requestPermissionsAsync();
+    if (!granted) {
+      Alert.alert(
+        'Microphone Access Required',
+        'Please allow microphone access in Settings to record your voice.',
+        [{ text: 'OK' }]
+      );
+      return;
     }
-    const setupEvaluation = async () => {
-      const response = await fetch(`${API_BASE}/startevaluation`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          "userId":1,
-        })
-      });
-      const responseData:{evaluation_id:number} = await response.json();
-      console.log(responseData);
-      setEvaluationId(responseData.evaluation_id);
-    };
-    console.log(evaluationId);
-    if(evaluationId === null){
-      setupEvaluation();
-    }
-    setStep('countdown');
+    setStep('recording');
   };
 
-  const handleCapture = (base64: string) => {
-    setCapturedImage(base64);
+  const handleStop = (recordingUri: string) => {
+    setUri(recordingUri);
     setStep('loading');
   };
 
-  const handleRescan = () => {
-    setCapturedImage('');
+  const handleRerecord = () => {
+    setUri('');
     setResult(null);
     setStep('intro');
   };
@@ -441,26 +477,19 @@ export default function FaceSurveyScreen() {
       <StepTabs />
 
       {step === 'intro'     && <IntroScreen    onBegin={handleBegin} />}
-      {step === 'countdown' && <CountdownScreen onCapture={handleCapture} />}
+      {step === 'recording' && <RecordingScreen onStop={handleStop} />}
       {step === 'loading'   && (
         <LoadingScreen
-          image={capturedImage}
+          uri={uri}
           evaluationId={evaluationId}
-          onComplete={res => { 
-            
-            setResult(res); setStep('result'); }}
+          onComplete={res => { setResult(res); setStep('result'); }}
         />
       )}
       {step === 'result' && (
         <ResultScreen
           result={result}
-          onContinue={() => {
-            router.replace({
-              pathname: '/survey-audio' as any,
-              params: { evaluationId: String(evaluationId) },
-            });
-          }}
-          onRescan={handleRescan}
+          onContinue={() => router.replace('/(tabs)')} // TODO: wire to text survey
+          onRerecord={handleRerecord}
         />
       )}
     </SafeAreaView>
@@ -505,7 +534,7 @@ const styles = StyleSheet.create({
   },
   tabActive: {
     backgroundColor: TAB_ACTIVE,
-    borderColor: PURPLE,
+    borderColor: ORANGE,
   },
   tabText: {
     color: TEXT_MUTED,
@@ -546,15 +575,15 @@ const styles = StyleSheet.create({
 
   // ── Circle
   circleGlow: {
-    shadowColor: PURPLE,
+    shadowColor: ORANGE,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.45,
+    shadowOpacity: 0.35,
     shadowRadius: 22,
     elevation: 14,
   },
   circle: {
     borderWidth: 1.5,
-    borderColor: PURPLE,
+    borderColor: ORANGE,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -564,41 +593,75 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
 
-  // ── Intro
+  // ── Intro / mic
   pulseRing: {
     borderWidth: 1.5,
-    borderColor: PURPLE,
+    borderColor: ORANGE,
   },
-  tapToBegin: {
-    color: PURPLE,
-    fontSize: 15,
+  micContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  startLabel: {
+    color: ORANGE,
+    fontSize: 14,
     fontWeight: '600',
-    letterSpacing: 2,
+    letterSpacing: 0.5,
   },
 
-  // ── Countdown
-  countdownNumber: {
+  // ── Recording
+  recRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  recDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: ORANGE,
+  },
+  recLabel: {
+    color: ORANGE,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+  },
+  timerLabel: {
     color: TEXT_PRIMARY,
-    fontSize: 100,
-    fontWeight: '900',
-    lineHeight: 115,
-    textShadowColor: 'rgba(0,0,0,0.75)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+
+  // ── Waveform
+  waveformRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 28,
+    height: BAR_MAX_H + 8,
+  },
+  waveBar: {
+    width: 4,
+    borderRadius: 2,
+    backgroundColor: ORANGE,
+    minHeight: BAR_MIN_H,
+  },
+  tapToStop: {
+    color: TEXT_MUTED,
+    fontSize: 14,
+    marginTop: 16,
   },
 
   // ── Loading
-  avatarPlaceholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   progressContainer: {
     width: '100%',
     marginTop: 24,
   },
   progressLabel: {
-    color: PURPLE,
+    color: ORANGE,
     fontSize: 13,
     marginBottom: 8,
   },
@@ -610,7 +673,7 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     height: '100%',
-    backgroundColor: PURPLE,
+    backgroundColor: ORANGE,
     borderRadius: 2,
   },
 
@@ -629,9 +692,9 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#2B2857',
+    backgroundColor: ORANGE_DIM,
     borderWidth: 1.5,
-    borderColor: PURPLE,
+    borderColor: ORANGE,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 18,
@@ -641,7 +704,7 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_BG,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: PURPLE,
+    borderColor: ORANGE,
     paddingVertical: 24,
     paddingHorizontal: 20,
     alignItems: 'center',
@@ -699,12 +762,12 @@ const styles = StyleSheet.create({
   },
   confidenceBar: {
     height: '100%',
-    backgroundColor: PURPLE,
+    backgroundColor: ORANGE,
     borderRadius: 2,
   },
   ctaButton: {
     width: '100%',
-    backgroundColor: PURPLE,
+    backgroundColor: ORANGE,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
@@ -714,7 +777,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  rescanText: {
+  rerecordText: {
     color: TEXT_MUTED,
     fontSize: 15,
     fontWeight: '500',
