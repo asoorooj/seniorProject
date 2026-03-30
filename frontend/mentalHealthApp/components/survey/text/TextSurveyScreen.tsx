@@ -87,22 +87,6 @@ async function analyzeText(text: string, evaluationId: number): Promise<EmotionR
   }
 }
 
-async function endEvaluation(evaluationId: number) {
-  try {
-    const res = await fetch(`${API_BASE}/endevaluation`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ evaluationId }),
-    });
-    const data = await res.json();
-    console.log('End evaluation:', data);
-    return data;
-  } catch (err) {
-    console.warn('End evaluation failed:', err);
-    return null;
-  }
-}
-
 // ─── FadeInView ───────────────────────────────────────────────────────────────
 function FadeInView({ children, style }: { children: React.ReactNode; style?: object }) {
   const opacity = useRef(new Animated.Value(0)).current;
@@ -417,8 +401,18 @@ function ResultScreen({
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function TextSurveyScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ evaluationId?: string }>();
+  const params = useLocalSearchParams<{
+    evaluationId?: string;
+    faceLabel?: string;
+    faceConf?: string;
+    audioLabel?: string;
+    audioConf?: string;
+  }>();
   const evaluationId = params.evaluationId ? Number(params.evaluationId) : null;
+  const faceLabel    = params.faceLabel  ?? 'Neutral';
+  const faceConf     = params.faceConf   ?? '0';
+  const audioLabel   = params.audioLabel ?? 'Neutral';
+  const audioConf    = params.audioConf  ?? '0';
 
   const [step,    setStep]    = useState<TextStep>('prompt-select');
   const [prompts] = useState<string[]>(pickPrompts);
@@ -448,11 +442,21 @@ export default function TextSurveyScreen() {
     setStep('result');
   };
 
-  const handleFinish = async () => {
-    if (evaluationId !== null) {
-      await endEvaluation(evaluationId);
-    }
-    router.replace('/(tabs)');
+  const handleFinish = () => {
+    router.replace({
+      pathname: '/survey-results' as any,
+      params: {
+        evaluationId: String(evaluationId),
+        faceLabel,
+        faceConf,
+        audioLabel,
+        audioConf,
+        textLabel: result?.label ?? 'Neutral',
+        textConf:  String(Math.round(
+          (result?.scores ? Math.max(...Object.values(result.scores)) : 0) * 100
+        )),
+      },
+    });
   };
 
   const handleRewrite = () => {
