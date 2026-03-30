@@ -488,7 +488,12 @@ export default function AudioSurveyScreen() {
       {step === 'result' && (
         <ResultScreen
           result={result}
-          onContinue={() => router.replace('/(tabs)')} // TODO: wire to text survey
+          onContinue={() =>
+            router.replace({
+              pathname: '/survey-text' as any,
+              params: { evaluationId: String(evaluationId) },
+            })
+          }
           onRerecord={handleRerecord}
         />
       )}
