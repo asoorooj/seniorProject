@@ -435,8 +435,14 @@ function ResultScreen({
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function AudioSurveyScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ evaluationId?: string }>();
+  const params = useLocalSearchParams<{
+    evaluationId?: string;
+    faceLabel?: string;
+    faceConf?: string;
+  }>();
   const evaluationId = params.evaluationId ? Number(params.evaluationId) : null;
+  const faceLabel    = params.faceLabel ?? 'Neutral';
+  const faceConf     = params.faceConf  ?? '0';
 
   const [step,   setStep]   = useState<AudioStep>('intro');
   const [uri,    setUri]    = useState('');
@@ -491,7 +497,13 @@ export default function AudioSurveyScreen() {
           onContinue={() =>
             router.replace({
               pathname: '/survey-text' as any,
-              params: { evaluationId: String(evaluationId) },
+              params: {
+                evaluationId: String(evaluationId),
+                faceLabel,
+                faceConf,
+                audioLabel: result?.emotion ?? 'Neutral',
+                audioConf:  String(Math.round((result?.confidence ?? 0) * 100)),
+              },
             })
           }
           onRerecord={handleRerecord}

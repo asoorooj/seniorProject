@@ -457,7 +457,11 @@ export default function FaceSurveyScreen() {
           onContinue={() => {
             router.replace({
               pathname: '/survey-audio' as any,
-              params: { evaluationId: String(evaluationId) },
+              params: {
+                evaluationId: String(evaluationId),
+                faceLabel: result?.emotion ?? 'Neutral',
+                faceConf:  String(Math.round((result?.confidence ?? 0) * 100)),
+              },
             });
           }}
           onRescan={handleRescan}
