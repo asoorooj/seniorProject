@@ -27,13 +27,13 @@ const RECOMMENDATION: Recommendation = {
 
 // Placeholder — replace with API response from GET /api/scores/week
 const WEEKLY_SCORES: DayScore[] = [
-  { day: 'M', score: 58 },
-  { day: 'T', score: 40 },
-  { day: 'W', score: 78 },
-  { day: 'T', score: 90 },
-  { day: 'F', score: 58 },
-  { day: 'S', score: 100, isToday: true },
-  { day: 'S', score: 66 },
+  { day: 'Mon', score: 58 },
+  { day: 'Tue', score: 40 },
+  { day: 'Wed', score: 78 },
+  { day: 'Thu', score: 90 },
+  { day: 'Fri', score: 58 },
+  { day: 'Sat', score: 100, isToday: true },
+  { day: 'Sun', score: 66 },
 ];
 
 export default function HomeScreen() {
