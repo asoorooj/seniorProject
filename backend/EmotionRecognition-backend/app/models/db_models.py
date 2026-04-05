@@ -14,7 +14,7 @@ class Session(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    last_seen_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    last_seen_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)
 
 
 class Message(db.Model):
@@ -22,7 +22,8 @@ class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey("sessions.id"), nullable=False)
     role = db.Column(db.String(16), nullable=False)  # "user" or "assistant"
-    content = db.Column(db.Text, nullable=False)
+    textMessage = db.Column(db.Text, nullable=False)
+    emotion_label = db.Column(db.String(32), nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 

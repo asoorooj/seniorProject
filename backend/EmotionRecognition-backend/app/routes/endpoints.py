@@ -9,11 +9,19 @@ from app.models.db_models import (
     AudioEvalutations,
     Evaluation,
     ImageEvalutations,
+    Message,
     TextEvalutations,
+    Session,
     User,
 )
 
-from app.chatbot_service import createChat, create_chat_with_id, get_chat, quickEval
+from app.chatbot_service import (
+    createChat,
+    create_chat_session_with_id,
+    create_chat_with_id,
+    get_chat_history,
+    quickEval,
+)
 from app.ai_models import (
     FUSION_LABELS,
     predict_face,
@@ -97,6 +105,18 @@ def _extract_gemini_text(response):
                 return part_text
 
     return None
+
+
+def _message_to_dict(message):
+    return {
+        "id": str(message.id),
+        "sessionId": str(message.session_id),
+        "isUser": message.role == "user",
+        "textMessage": message.textMessage,
+        "emotionLabel": message.emotion_label,
+        "timestamp": message.timestamp.isoformat() if message.timestamp else None,
+        "status": "sent",
+    }
 
 
 @api_bp.get("/users")
@@ -721,22 +741,80 @@ def end_evaluation():
 @api_bp.post("/chat")
 def chat_with_gemini():
     payload = request.get_json(silent=True) or {}
-    message = payload.get("message") or request.args.get("message")
-    chat_id = payload.get("chat_id") or request.args.get("chat_id")
-    if not message:
-        return _json_error("message is required in JSON body")
-
+    message_payload = payload.get("message")
+    user_id = payload.get("userId")
+    if not isinstance(message_payload, dict):
+        return _json_error("message is required and must be an object", 400)
+    text_message = message_payload.get("textMessage")
+    if not text_message:
+        return _json_error("message.textMessage is required", 400)
+    session_id = message_payload.get("sessionId") or payload.get("sessionId")
     try:
-        if chat_id:
-            chat = get_chat(chat_id)
-            if not chat:
-                return _json_error("chat_id not found", 404)
-        else:
-            chat_id, chat = create_chat_with_id()
-        response = chat.send_message(message)
+        if not session_id:
+            if not user_id:
+                return _json_error("userId is required when sessionId is missing", 400)
+            session = (
+                Session.query.filter_by(user_id=user_id)
+                .order_by(Session.id.asc())
+                .first()
+            )
+            if session:
+                session_id = session.id
+                chat = create_chat_with_id(session_id)
+            else:
+                session, chat = create_chat_session_with_id(user_id)
+                session_id = session.id
+
+        user_emotion_label, _, _ = predict_emotion_text(text_message)
+        user_message = Message(
+            session_id=int(session_id),
+            role="user",
+            textMessage=text_message,
+            emotion_label=user_emotion_label,
+        )
+        db.session.add(user_message)
+        db.session.flush()
+
+        response = chat.send_message(text_message)
     except Exception as exc:
+        db.session.rollback()
         return _json_error(f"Gemini error: {exc}", 500)
 
     response_text = _extract_gemini_text(response) or ""
-    print(response_text)
-    return jsonify(message=message, response=response_text, chat_id=chat_id), 200
+    assistant_message = Message(
+        session_id=int(session_id),
+        role="assistant",
+        textMessage=response_text,
+    )
+    db.session.add(assistant_message)
+    db.session.commit()
+    return jsonify(
+        chat_id=str(session_id),
+        user_message=_message_to_dict(user_message),
+        response_message=_message_to_dict(assistant_message),
+    ), 200
+
+
+@api_bp.get("/chat/history")
+def get_chat_history_endpoint():
+    session_id = request.args.get("session_id", type=int)
+    user_id = request.args.get("user_id", type=int)
+    before_id = request.args.get("before_id", type=int)
+    limit = request.args.get("limit", type=int) or 20
+
+    if not session_id:
+        if not user_id:
+            return _json_error("session_id is required (or provide user_id)", 400)
+        session = (
+            Session.query.filter_by(user_id=user_id)
+            .order_by(Session.id.asc())
+            .first()
+        )
+        if not session:
+            return _json_error("session not found for user_id", 404)
+        session_id = session.id
+    if limit <= 0 or limit > 50:
+        return _json_error("limit must be between 1 and 50", 400)
+
+    payload = get_chat_history(session_id, limit=limit, before_id=before_id)
+    return jsonify(payload), 200
