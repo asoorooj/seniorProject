@@ -14,7 +14,11 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
-import { API_BASE } from '@/constants/api';
+import {
+  analyzeFaceImage,
+  endEvaluation,
+  startEvaluation,
+} from '@/services/apiService';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG           = '#1E1830';
@@ -53,27 +57,6 @@ type EmotionResult = {
 // ─── API call ─────────────────────────────────────────────────────────────────
 // Sends base64-encoded image (the "byte array") to the backend.
 // Falls back to placeholder data if the endpoint isn't ready yet.
-async function analyzeImage(base64: string, evaluationId:number): Promise<EmotionResult> {
-  try {
-    const res = await fetch(`${API_BASE}/startevaluation_face`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: base64, evaluationId: evaluationId}),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    console.log(data);
-    return {
-      emotion: data.image_label ?? 'Unknown',
-      confidence: typeof data.image_scores[data.image_label] === 'number' ? data.image_scores[data.image_label] : 0,
-    };
-  } catch (err) {
-    console.warn('Face analysis API not available, using placeholder:', err);
-    // Placeholder until the backend endpoint is live
-    return { emotion: 'Happy', confidence: 0.87 };
-  }
-}
-
 // ─── FadeInView ───────────────────────────────────────────────────────────────
 function FadeInView({ children }: { children: React.ReactNode }) {
   const opacity = useRef(new Animated.Value(0)).current;
@@ -272,7 +255,7 @@ function LoadingScreen({
     }).start();
 
     if(evaluationId === null) return; //redirect home??
-    analyzeImage(image, evaluationId).then(result => {
+    analyzeFaceImage(image, evaluationId).then(result => {
       // Wait at least 2.8s so the progress bar finishes before advancing
       setTimeout(() => {
         onComplete(result), 2800
@@ -373,16 +356,9 @@ export default function FaceSurveyScreen() {
     if (step === 'intro'){
       router.back();
       const closeEvaluation = async () => {
-      const response = await fetch(`${API_BASE}/endevaluation`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          "evaluationId": evaluationId,
-        })
-      });
-      const responseData:{evaluationId:number} = await response.json();
+      const responseData: { evaluationId: number } = await endEvaluation(
+        evaluationId as number
+      );
       console.log(responseData);
       };
       closeEvaluation();
@@ -404,16 +380,7 @@ export default function FaceSurveyScreen() {
       }
     }
     const setupEvaluation = async () => {
-      const response = await fetch(`${API_BASE}/startevaluation`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          "userId":1,
-        })
-      });
-      const responseData:{evaluation_id:number} = await response.json();
+      const responseData: { evaluation_id: number } = await startEvaluation(1);
       console.log(responseData);
       setEvaluationId(responseData.evaluation_id);
     };

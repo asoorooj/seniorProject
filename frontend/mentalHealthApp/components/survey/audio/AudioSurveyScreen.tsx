@@ -14,7 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
 
-import { API_BASE } from '@/constants/api';
+import { analyzeAudioClip } from '@/services/apiService';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG           = '#1E1830';
@@ -51,36 +51,6 @@ type EmotionResult = {
 };
 
 // ─── API call ─────────────────────────────────────────────────────────────────
-async function analyzeAudio(uri: string, evaluationId: number): Promise<EmotionResult> {
-  try {
-    const formData = new FormData();
-    formData.append('audio', {
-      uri,
-      type: 'audio/m4a',
-      name: 'recording.m4a',
-    } as any);
-    formData.append('evaluationId', String(evaluationId));
-
-    const res = await fetch(`${API_BASE}/startevaluation_audio`, {
-      method: 'POST',
-      body: formData,
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    console.log('Audio analysis:', data);
-    return {
-      emotion: data.audio_label ?? 'Unknown',
-      confidence:
-        typeof data.audio_scores?.[data.audio_label] === 'number'
-          ? data.audio_scores[data.audio_label]
-          : 0,
-    };
-  } catch (err) {
-    console.warn('Audio analysis API not available, using placeholder:', err);
-    return { emotion: 'Neutral', confidence: 0.72 };
-  }
-}
-
 // ─── FadeInView ───────────────────────────────────────────────────────────────
 function FadeInView({ children }: { children: React.ReactNode }) {
   const opacity = useRef(new Animated.Value(0)).current;
@@ -345,7 +315,7 @@ function LoadingScreen({
     }).start();
 
     if (evaluationId === null) return;
-    analyzeAudio(uri, evaluationId).then(result => {
+    analyzeAudioClip(uri, evaluationId).then(result => {
       setTimeout(() => onComplete(result), 2800);
     });
   }, []);

@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MessageBubble from "../components/chat/MessageBubble";
 import { Message } from "../components/chat/Message";
 import ChatInput from "../components/chat/ChatInput";
-import { API_BASE } from "@/constants/api";
+import { fetchChatHistory, sendChatMessage } from "@/services/apiService";
 
 export default function ChatScreen() {
   const router = useRouter();
@@ -33,19 +33,11 @@ export default function ChatScreen() {
   const fetchHistory = async (beforeId?: number) => {
     if (isFetchingHistory.current) return;
     isFetchingHistory.current = true;
-    const url = beforeId
-      ? `${API_BASE}/chat/history?user_id=1&before_id=${beforeId}`
-      : `${API_BASE}/chat/history?user_id=1`;
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
-    if(!res.ok){
-      console.error(await res.json());
+    const data = await fetchChatHistory({ userId: 1, beforeId });
+    if (!data) {
       isFetchingHistory.current = false;
       return;
-    } 
-    const data = await res.json();
+    }
     console.log(data);
     hasMoreRef.current = Boolean(data.has_more);
     nextBeforeId.current = data.next_before_id;
@@ -102,20 +94,7 @@ export default function ChatScreen() {
     setMessages((prev) => [...prev, newMessage]);
     const sendChatForResponse = async function(){
       setIsGenerating(true);
-      const res = await fetch(`${API_BASE}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId:1,
-          message: newMessage,
-        }),
-      });
-      if(!res.ok){
-        console.error(await res.json());
-        setIsGenerating(false);
-        return;
-      } 
-      const data = await res.json();
+      const data = await sendChatMessage({ userId: 1, message: newMessage });
       console.log(data);
       setIsGenerating(false);
       return data;

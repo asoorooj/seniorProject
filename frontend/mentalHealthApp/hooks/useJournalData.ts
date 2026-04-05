@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { colors } from '@/assets/styles/colors';
 import { LogEntryData } from '@/components/journal/LogEntry';
-import { API_BASE } from '@/constants/api';
+import { fetchEvaluationsByDate } from '@/services/apiService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,15 +79,8 @@ async function fetchWeekEntries(weekStart: Date): Promise<RawEntry[]> {
     // go through that data and push it to entries
     const entries: RawEntry[] = [];
 
-    let asyncFunction = async () =>{
-        let thisItem = await fetch(`${API_BASE}/evaluation/by-date?user_id=1&start_date=${weekStart.getMonth()+1}/${weekStart.getDate()}/${weekStart.getFullYear()}`, {
-            method: 'GET',
-            headers: {'Content-Type': 'application/json'}
-        });
-        let jsonData = await thisItem.json();
-        return jsonData;
-    }
-    const data = await asyncFunction();
+    const startDate = `${weekStart.getMonth() + 1}/${weekStart.getDate()}/${weekStart.getFullYear()}`;
+    const data = await fetchEvaluationsByDate({ userId: 1, startDate });
 
     console.log(data);
 

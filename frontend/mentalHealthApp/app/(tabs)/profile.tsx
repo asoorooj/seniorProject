@@ -16,9 +16,14 @@ import { EmotionalProfileCard, EmotionTag } from '@/components/profile/Emotional
 import { StoragePermissionsCard } from '@/components/profile/StoragePermissionsCard';
 import { AccountCard } from '@/components/profile/AccountCard';
 import { DayScore } from '@/components/home/WeeklyChart';
-import { API_BASE } from '@/constants/api';
 import { colors } from '@/assets/styles/colors';
 import { sectionLabel } from "@/assets/styles/text";
+import {
+  fetchEmotionalProfile,
+  fetchProfile,
+  fetchWeeklyScores,
+  logout,
+} from '@/services/apiService';
 
 // Derive isToday from the current day of the week (0=Sun, 1=Mon, ..., 6=Sat)
 const DAYS: DayScore['day'][] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -76,19 +81,14 @@ export default function ProfileScreen() {
     setError(false);
     try {
       const [profileRes, scoresRes, emotionsRes] = await Promise.all([
-        fetch(`${API_BASE}/api/profile`),
-        fetch(`${API_BASE}/api/scores/week`),
-        fetch(`${API_BASE}/api/emotional-profile`),
+        fetchProfile(),
+        fetchWeeklyScores(),
+        fetchEmotionalProfile(),
       ]);
-
-      if (!profileRes.ok || !scoresRes.ok || !emotionsRes.ok) {
-        throw new Error('One or more requests failed');
-      }
-
       const [profileData, scoresData, emotionsData] = await Promise.all([
-        profileRes.json(),
-        scoresRes.json(),
-        emotionsRes.json(),
+        profileRes,
+        scoresRes,
+        emotionsRes,
       ]);
 
       setUser(profileData);
@@ -117,7 +117,7 @@ export default function ProfileScreen() {
   }, [fetchData]);
 
   const handleSignOut = useCallback(() => {
-    fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' }).catch(() => {});
+    logout().catch(() => {});
     // TODO: clear stored auth token here (e.g. AsyncStorage.removeItem('token'))
     // then navigate to login: router.replace('/login')
   }, []);
