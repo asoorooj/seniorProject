@@ -20,7 +20,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.cuda.is_available()
 
 #Load values from pretrained model
-textCheckpoint = torch.load("./app/modelWeights/combined_model.pth", map_location=device)
+textCheckpoint = torch.load("C:\\Users\\MEETS_PC\\Documents\\VScode\\seniorProject\\aiModels\\languageModel\\combined_model.pth", map_location=device)
 emotionsList = ["sadness", "joy", "love", "anger", "fear", "surprise"]
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
@@ -111,7 +111,7 @@ class FERResNet(nn.Module):
 
 
 model = FERResNet(num_classes=num_classes).to(device)
-ckpt  = torch.load("./app/modelWeights/fer_ck_finetuned_inference.pth", map_location=device)
+ckpt  = torch.load("C:\\Users\\MEETS_PC\\Documents\\VScode\\seniorProject\\aiModels\\facialModel\\fer_ck_finetuned_inference.pth", map_location=device)
 model.load_state_dict(ckpt['model_state_dict'])
 model.eval()
 
@@ -175,12 +175,12 @@ class AudioEmotionCNN2D(nn.Module):
 
 cnn = AudioEmotionCNN2D(num_classes=len(audio_target_emotions)).to(device)
 
-cnn.load_state_dict(torch.load("./app/modelWeights/audio_model_cnn.pth", map_location=device))
+cnn.load_state_dict(torch.load("C:\\Users\\MEETS_PC\\Documents\\VScode\\seniorProject\\aiModels\\audioModel\\audio_model_cnn.pth", map_location=device))
 
 W_CNN = 0.60
 W_SVM = 0.40
 
-svm = joblib.load("./app/modelWeights/svm_model_for_fusion.joblib")
+svm = joblib.load("C:\\Users\\MEETS_PC\\Documents\\VScode\\seniorProject\\aiModels\\audioModel\\svm_model_for_fusion.joblib")
 
 TRAINED_COLS = None
 if hasattr(svm, "named_steps") and "scaler" in svm.named_steps and hasattr(svm.named_steps["scaler"], "feature_names_in_"):

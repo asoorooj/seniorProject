@@ -1,22 +1,173 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   Image,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import MessageBubble from "../components/chat/MessageBubble";
+import { Message } from "../components/chat/Message";
+import ChatInput from "../components/chat/ChatInput";
+import {
+  getHistoryPage,
+  getLatestUserEmotionLabel,
+  getAllMessages,
+  getRecentMessages,
+} from "@/services/repositories/chatRepository";
+import {
+  ensureMessageOutboxAndLocal,
+  getFallbackBeforeId,
+  syncOutbox,
+} from "@/services/sync/syncController";
+import { fetchChatHistory } from "@/services/apiService";
 
 export default function ChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView | null>(null);
+  const hasMoreRef = useRef<boolean>(true);
+  const nextBeforeId = useRef<number|undefined>(undefined);
+  const isFetchingHistory = useRef<boolean>(false);
+  const isAtBottomRef = useRef<boolean>(true);
+  const isAtTopRef = useRef<boolean>(false);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [messageEmotion, setMessageEmotion] = useState<string|undefined>(undefined);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const chatPageLimit = 20;
+
+  const mapApiMessages = (apiMessages: any[]) => {
+    return apiMessages.map((message: any) => {
+      return new Message({
+        id: message.id ?? message.server_id,
+        sessionId: message.sessionId ?? message.session_id,
+        isUser:
+          typeof message.isUser === "boolean"
+            ? message.isUser
+            : message.role === "user",
+        textMessage: message.textMessage ?? message.text_message ?? message.message ?? "",
+        timestamp: message.timestamp ? new Date(message.timestamp) : new Date(),
+      } as Message);
+    });
+  };
+
+  const getNextBeforeIdFromApi = (apiMessages: any[]) => {
+    const ids = apiMessages
+      .map((message: any) => message.id ?? message.server_id)
+      .filter((id: any) => typeof id === "number");
+    if (ids.length === 0) return undefined;
+    return Math.min(...ids);
+  };
+
+  const scheduleRetryIfNeeded = () => {
+    if (!isAtTopRef.current) return;
+    if (!hasMoreRef.current || !nextBeforeId.current) return;
+    if (retryTimeoutRef.current) return;
+    console.log("[chat] retry_scheduled", { beforeId: nextBeforeId.current });
+    retryTimeoutRef.current = setTimeout(() => {
+      retryTimeoutRef.current = null;
+      console.log("[chat] retry_fire", { beforeId: nextBeforeId.current });
+      fetchHistory(nextBeforeId.current);
+    }, 2000);
+  };
+
+  const clearRetry = () => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+  };
+
+  const fetchHistory = async (beforeId?: number) => {
+    if (isFetchingHistory.current) return;
+    isFetchingHistory.current = true;
+    if (!beforeId) {
+      const localMessages = await getAllMessages();
+      setMessages(localMessages);
+      nextBeforeId.current = (await getFallbackBeforeId()) ?? undefined;
+      hasMoreRef.current = Boolean(nextBeforeId.current);
+    } else {
+      // Older paging: fetch older messages into memory only.
+      const data = await fetchChatHistory({
+        userId: 1,
+        beforeId,
+        limit: chatPageLimit,
+      });
+      if (!data) {
+        isFetchingHistory.current = false;
+        scheduleRetryIfNeeded();
+        return;
+      }
+      const apiMessages = data?.messages ?? [];
+      if (apiMessages.length > 0) {
+        const mapped = mapApiMessages(apiMessages);
+        const existingIds = new Set(
+          messages
+            .map((message) => message.id)
+            .filter((id) => typeof id === "number") as number[]
+        );
+        const unique = mapped.filter((message) => {
+          const id = message.id;
+          return typeof id !== "number" || !existingIds.has(id);
+        });
+        if (unique.length > 0) {
+          setMessages((prev) => [...unique, ...prev]);
+        }
+      }
+      hasMoreRef.current = apiMessages.length === chatPageLimit;
+      nextBeforeId.current =
+        data?.next_before_id ?? getNextBeforeIdFromApi(apiMessages);
+    }
+    if (!beforeId) {
+      const emotion = await getLatestUserEmotionLabel();
+      setMessageEmotion(emotion ?? undefined);
+    }
+    clearRetry();
+    isFetchingHistory.current = false;
+  };
+
+  useEffect(() => {
+    fetchHistory().then(() => {
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 50);
+    });
+  },[])
+
+  const handleScroll = (event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event?.nativeEvent || {};
+    const yOffset = contentOffset?.y ?? 0;
+    const contentHeight = contentSize?.height ?? 0;
+    const viewHeight = layoutMeasurement?.height ?? 0;
+    const distanceFromBottom = contentHeight - viewHeight - yOffset;
+    isAtBottomRef.current = distanceFromBottom <= 20;
+    isAtTopRef.current = yOffset <= 20;
+    if (yOffset <= 20 && hasMoreRef.current && nextBeforeId.current) {
+      fetchHistory(nextBeforeId.current);
+    }
+  };
+
+  const handleSendMessage = async (text: string) => {
+    const localMessage = await ensureMessageOutboxAndLocal({
+      textMessage: text,
+      sessionId: undefined,
+    });
+    setMessages((prev) => [...prev, localMessage]);
+    setIsGenerating(true);
+    await syncOutbox();
+    const refreshed = await getRecentMessages(50);
+    setMessages(refreshed);
+    const emotion = await getLatestUserEmotionLabel();
+    setMessageEmotion(emotion ?? undefined);
+    setIsGenerating(false);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+  };
 
   return (
     <SafeAreaView style={styles.screen} edges={["left", "right"]}>
@@ -53,73 +204,36 @@ export default function ChatScreen() {
       <View style={styles.topDivider} />
 
       <ScrollView
+        ref={scrollRef}
         style={styles.chatBody}
-        contentContainerStyle={styles.chatContent}
+        contentContainerStyle={[
+          styles.chatContent,
+          { paddingBottom: 140 },
+        ]}
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        stickyHeaderIndices={[0]}
       >
-        <View style={styles.moodPill}>
-          <Text style={styles.moodLabel}>Based on your scan today:</Text>
-          <Text style={styles.moodValue}>Mostly Calm</Text>
-        </View>
-
-        <View style={styles.leftMessageRow}>
-          <LinearGradient
-            colors={["#F27059", "#9B8FE8"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.smallAvatar}
-          >
-            <Image
-              source={require("../assets/images/kokoro_white_logo.png")}
-              style={styles.smallLogoImage}
-              resizeMode="contain"
-            />
-          </LinearGradient>
-
-          <View style={styles.aiBubble}>
-            <Text style={styles.aiText}>
-              Hi Skylar! Your scan showed you’re feeling calm today, that’s
-              great! Anything on your mind?
-            </Text>
+        {messageEmotion && 
+          <View style={styles.moodStickyWrap}>
+            <View style={styles.moodPill}>
+              <Text style={styles.moodLabel}>Based on your messages: {messageEmotion}</Text>
+              <Text style={styles.moodValue}></Text>
+            </View>
           </View>
-        </View>
-
-        <View style={styles.userRow}>
-          <LinearGradient
-            colors={["#F27059", "#F4845F"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.userBubble}
-          >
-            <Text style={styles.userText}>
-              Kinda, yes, feeling a bit stressed out with deadlines!
-            </Text>
-          </LinearGradient>
-        </View>
-
-        <View style={styles.leftMessageRow}>
-          <LinearGradient
-            colors={["#F27059", "#9B8FE8"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.smallAvatar}
-          >
-            <Image
-              source={require("../assets/images/kokoro_white_logo.png")}
-              style={styles.smallLogoImage}
-              resizeMode="contain"
-            />
-          </LinearGradient>
-
-          <View style={styles.aiBubble}>
-            <Text style={styles.aiText}>
-              That’s totally valid. Would you like to vent, try a breathing
-              exercise, or a de-stresser activity?
-            </Text>
+        }
+        {messages.map((message) => (
+          <MessageBubble key={message.id} message={message} />
+        ))}
+        {isGenerating && (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator size="small" color="#9E8FB8" />
+            <Text style={styles.loadingText}>Generating response…</Text>
           </View>
-        </View>
+        )}
 
-        <View style={styles.quickActionsWrap}>
+        {/* <View style={styles.quickActionsWrap}>
           <View style={styles.quickActionsRow}>
             <TouchableOpacity style={styles.optionButton}>
               <Text style={styles.optionText}>Vent</Text>
@@ -135,30 +249,13 @@ export default function ChatScreen() {
               <Text style={styles.optionText}>Activity</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </View> */}
       </ScrollView>
 
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom || 12 }]}>
-        <View style={styles.bottomDivider} />
-        <View style={styles.inputRow}>
-          <TextInput
-            placeholder="Type a message..."
-            placeholderTextColor="#9E8FB8"
-            style={styles.input}
-          />
-
-          <TouchableOpacity>
-            <LinearGradient
-              colors={["#F27059", "#9B8FE8"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.sendButton}
-            >
-              <Ionicons name="arrow-up" size={24} color="#FFFFFF" />
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <ChatInput
+        bottomInset={insets.bottom || 12}
+        onSendMessage={handleSendMessage}
+      />
     </SafeAreaView>
   );
 }
@@ -249,6 +346,11 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
   },
 
+  moodStickyWrap: {
+    backgroundColor: "#F8F5FF",
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
   moodPill: {
     width: 341,
     height: 45,
@@ -279,83 +381,6 @@ const styles = StyleSheet.create({
     color: "#9B8FE8",
   },
 
-  leftMessageRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    marginLeft: 24,
-    marginBottom: 26,
-  },
-
-  smallAvatar: {
-    width: 35,
-    height: 35,
-    borderRadius: 17.5,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 7,
-    marginBottom: 4,
-  },
-
-  smallLogoImage: {
-    width: 42,
-    height: 42,
-  },
-
-  aiBubble: {
-    width: 235,
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    borderBottomRightRadius: 16,
-    borderBottomLeftRadius: 4,
-    shadowColor: "#1E1830",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
-    paddingTop: 16,
-    paddingLeft: 17,
-    paddingRight: 16,
-    paddingBottom: 16,
-  },
-
-  aiText: {
-    fontSize: 16,
-    fontWeight: "500",
-    lineHeight: 22,
-    color: "#1E1830",
-  },
-
-  userRow: {
-    alignItems: "flex-end",
-    paddingRight: 25,
-    marginBottom: 34,
-  },
-
-  userBubble: {
-    width: 224,
-    minHeight: 102,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    borderBottomRightRadius: 4,
-    borderBottomLeftRadius: 16,
-    shadowColor: "#F27059",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 4,
-    elevation: 4,
-    paddingTop: 18,
-    paddingLeft: 24,
-    paddingRight: 18,
-    paddingBottom: 18,
-  },
-
-  userText: {
-    fontSize: 16,
-    fontWeight: "500",
-    lineHeight: 22,
-    color: "#FFFFFF",
-  },
 
   quickActionsWrap: {
     marginLeft: 66,
@@ -390,49 +415,16 @@ const styles = StyleSheet.create({
     color: "#9E8FB8",
   },
 
-  bottomBar: {
-    width: "100%",
-    height: 100,
-    backgroundColor: "#FFFFFF",
-  },
-
-  bottomDivider: {
-    height: 1.5,
-    backgroundColor: "#EDE8FF",
-  },
-
-  inputRow: {
+  loadingRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 18,
-    marginLeft: 24,
-    marginRight: 24,
-  },
-
-  input: {
-    flex: 1,
-    height: 45,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: "#EDE8FF",
-    backgroundColor: "#F8F5FF",
-    paddingHorizontal: 18,
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#1E1830",
-  },
-
-  sendButton: {
-    width: 45,
-    height: 45,
-    marginLeft: 16,
-    borderRadius: 22.5,
-    alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#F27059",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.5,
-    shadowRadius: 5,
-    elevation: 4,
+    gap: 8,
+    marginTop: 12,
   },
+  loadingText: {
+    fontSize: 13,
+    color: "#9E8FB8",
+  },
+
 });

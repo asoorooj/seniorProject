@@ -16,9 +16,18 @@ import { EmotionalProfileCard, EmotionTag } from '@/components/profile/Emotional
 import { StoragePermissionsCard } from '@/components/profile/StoragePermissionsCard';
 import { AccountCard } from '@/components/profile/AccountCard';
 import { DayScore } from '@/components/home/WeeklyChart';
-import { API_BASE } from '@/constants/api';
 import { colors } from '@/assets/styles/colors';
 import { sectionLabel } from "@/assets/styles/text";
+import { logout } from '@/services/apiService';
+import {
+  getEmotionsCache,
+  getProfileCache,
+  getScoresCache,
+} from '@/services/repositories/profileRepository';
+import {
+  clearLocalData,
+  syncProfileCaches,
+} from '@/services/sync/syncController';
 
 // Derive isToday from the current day of the week (0=Sun, 1=Mon, ..., 6=Sat)
 const DAYS: DayScore['day'][] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -62,53 +71,32 @@ export default function ProfileScreen() {
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // During local development placeholder data shown by default.
-  // Set this to true when pointing at an actual backend during integration tests.
-  const USE_API = false;
-
   const fetchData = useCallback(async () => {
-    if (!USE_API) {
-      // Placeholder mode: no network call.
-      return;
-    }
-
-    // Real backend mode (commented out in placeholder setup):
     setError(false);
     try {
-      const [profileRes, scoresRes, emotionsRes] = await Promise.all([
-        fetch(`${API_BASE}/api/profile`),
-        fetch(`${API_BASE}/api/scores/week`),
-        fetch(`${API_BASE}/api/emotional-profile`),
+      const [cachedProfile, cachedScores, cachedEmotions] = await Promise.all([
+        getProfileCache<UserProfile>(),
+        getScoresCache<DayScore[]>(),
+        getEmotionsCache<EmotionTag[]>(),
       ]);
+      if (cachedProfile) setUser(cachedProfile);
+      if (cachedScores) setScores(cachedScores);
+      if (cachedEmotions) setEmotions(cachedEmotions);
 
-      if (!profileRes.ok || !scoresRes.ok || !emotionsRes.ok) {
-        throw new Error('One or more requests failed');
-      }
-
-      const [profileData, scoresData, emotionsData] = await Promise.all([
-        profileRes.json(),
-        scoresRes.json(),
-        emotionsRes.json(),
-      ]);
-
-      setUser(profileData);
-      setScores(scoresData);
-      setEmotions(emotionsData);
+      const synced = await syncProfileCaches();
+      if (synced?.profile) setUser(synced.profile);
+      if (synced?.scores) setScores(synced.scores);
+      if (synced?.emotions) setEmotions(synced.emotions);
     } catch (err) {
       console.error('Profile fetch failed:', err);
       setError(true);
     }
-  }, [USE_API]);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
-    if (USE_API) {
-      fetchData().finally(() => setLoading(false));
-    } else {
-      // Using placeholder values, instantly finish loading.
-      setLoading(false);
-    }
-  }, [fetchData, USE_API]);
+    fetchData().finally(() => setLoading(false));
+  }, [fetchData]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -117,7 +105,8 @@ export default function ProfileScreen() {
   }, [fetchData]);
 
   const handleSignOut = useCallback(() => {
-    fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' }).catch(() => {});
+    clearLocalData().catch(() => {});
+    logout().catch(() => {});
     // TODO: clear stored auth token here (e.g. AsyncStorage.removeItem('token'))
     // then navigate to login: router.replace('/login')
   }, []);

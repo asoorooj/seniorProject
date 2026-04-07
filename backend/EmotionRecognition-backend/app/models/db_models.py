@@ -1,5 +1,6 @@
 from datetime import datetime
 from app.extensions import db
+from werkzeug.security import generate_password_hash, check_password_hash
 
 
 class User(db.Model):
@@ -7,14 +8,35 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     external_id = db.Column(db.String(64), unique=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(256), nullable=False)
 
+    # CONSENT
+    consent_chat = db.Column(db.Boolean, default=False, nullable=False)
+    consent_image = db.Column(db.Boolean, default=False, nullable=False)
+    consent_audio = db.Column(db.Boolean, default=False, nullable=False)
+    consent_timestamp = db.Column(db.DateTime, nullable=True)
+
+    sessions = db.relationship("Session", backref="user", cascade="all, delete-orphan")
+    evaluations = db.relationship("Evaluation", backref="user", cascade="all, delete-orphan")
+
+    # to set and check hasehd passwords
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
 
 class Session(db.Model):
     __tablename__ = "sessions"
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    last_seen_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    last_seen_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)
+
+    messages = db.relationship("Message", backref="session", cascade="all, delete-orphan")
+    extractions = db.relationship("Extraction", backref="session", cascade="all, delete-orphan")
+    predictions = db.relationship("Prediction", backref="session", cascade="all, delete-orphan")
 
 
 class Message(db.Model):
@@ -22,9 +44,11 @@ class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey("sessions.id"), nullable=False)
     role = db.Column(db.String(16), nullable=False)  # "user" or "assistant"
-    content = db.Column(db.Text, nullable=False)
+    textMessage = db.Column(db.Text, nullable=False)
+    emotion_label = db.Column(db.String(32), nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
+    
 
 class Extraction(db.Model):
     __tablename__ = "extractions"
@@ -52,6 +76,11 @@ class Evaluation(db.Model):
     label = db.Column(db.String(16), nullable=True)
     scores = db.Column(db.JSON, nullable=True)
     suggestion = db.Column(db.String(64))
+
+    audio = db.relationship("AudioEvalutations", backref="evaluation", uselist=False, cascade="all, delete-orphan")
+    image = db.relationship("ImageEvalutations", backref="evaluation", uselist=False, cascade="all, delete-orphan")
+    text = db.relationship("TextEvalutations", backref="evaluation", uselist=False, cascade="all, delete-orphan") 
+
 
 class AudioEvalutations(db.Model):
     __tablename__ = "audioEvalutations"

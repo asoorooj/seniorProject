@@ -4,10 +4,11 @@ import uuid
 from google.genai import types
 from google import genai
 
+from app.extensions import db
+from app.models.db_models import Message, Session
+
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
-_CHAT_STORE = {}
 
 def _extract_gemini_text(response):
     candidates = getattr(response, "candidates", None) or []
@@ -62,18 +63,56 @@ def createChat():
                 If any topic ever becomes extremely serious that may best be handled by a trained professional, please cease giving professional advice, and instruct user to refer to online and local resources for professional assistance.
                 You are a chat-bot, so keep your responses concise but informative.
                 """,
-            max_output_tokens=200
+            # max_output_tokens=200
         ),
     )
     return chat
 
 
-def create_chat_with_id():
+def create_chat_session_with_id(user_id):
     chat = createChat()
-    chat_id = str(uuid.uuid4())
-    _CHAT_STORE[chat_id] = chat
-    return chat_id, chat
+    session = Session(user_id=user_id)
+    db.session.add(session)
+    db.session.flush()
+    welcome_message = Message(
+        session_id=session.id,
+        role="assistant",
+        textMessage="Tell me what's on your mind?",
+    )
+    db.session.add(welcome_message)
+    db.session.commit()
+    session_id = str(session.id)
+    return session_id, chat
 
+def create_chat_with_id(session_id):
+    chat = createChat()
+    return chat
 
-def get_chat(chat_id):
-    return _CHAT_STORE.get(chat_id)
+def get_chat_history(session_id, limit=20, before_id=None):
+    query = Message.query.filter_by(session_id=session_id)
+    if before_id is not None:
+        query = query.filter(Message.id < before_id)
+    rows = (
+        query.order_by(Message.id.desc())
+        .limit(limit)
+        .all()
+    )
+    messages = [
+        {
+            "id": m.id,
+            "session_id": m.session_id,
+            "role": m.role,
+            "textMessage": m.textMessage,
+            "emotionLabel": m.emotion_label,
+            "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+        }
+        for m in rows
+    ]
+    messages.reverse()
+    has_more = len(rows) == limit
+    next_before_id = rows[-1].id if rows else None
+    return {
+        "messages": messages,
+        "has_more": has_more,
+        "next_before_id": next_before_id,
+    }

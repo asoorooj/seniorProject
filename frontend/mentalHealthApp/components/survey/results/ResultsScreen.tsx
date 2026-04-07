@@ -12,7 +12,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { API_BASE } from '@/constants/api';
+import { endEvaluation } from '@/services/apiService';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG           = '#1E1830';
@@ -54,12 +54,7 @@ function formatNow(): string {
 // ─── API ──────────────────────────────────────────────────────────────────────
 async function callEndEvaluation(evaluationId: number): Promise<string | null> {
   try {
-    const res = await fetch(`${API_BASE}/endevaluation`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ evaluationId }),
-    });
-    const data = await res.json();
+    const data = await endEvaluation(evaluationId);
     console.log('Fusion result:', data);
     return data.label ?? null;
   } catch (err) {

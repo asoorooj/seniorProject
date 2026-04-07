@@ -36,6 +36,9 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# sqlite
+*.db
+
 app-example
 
 # generated native folders

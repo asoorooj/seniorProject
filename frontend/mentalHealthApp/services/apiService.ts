@@ -1,0 +1,224 @@
+import { API_BASE } from "@/constants/api";
+
+async function safeJson(res: Response) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchChatHistory(params: {
+  userId: number;
+  beforeId?: number;
+  cursor?: string | null;
+  limit?: number;
+}) {
+  const { userId, beforeId, cursor, limit } = params;
+  console.log("[api] fetchChatHistory:start", { userId, beforeId, cursor, limit });
+  let url = `${API_BASE}/chat/history?user_id=${userId}`;
+  if (cursor) {
+    url = `${url}&cursor=${encodeURIComponent(cursor)}`;
+  } else if (beforeId) {
+    url = `${url}&before_id=${beforeId}`;
+  }
+  if (limit) {
+    url = `${url}&limit=${limit}`;
+  }
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok) {
+      console.error(await safeJson(res));
+      console.warn("[api] fetchChatHistory:failed", { status: res.status });
+      return null;
+    }
+    console.log("[api] fetchChatHistory:success");
+    return res.json();
+  } catch (err) {
+    console.warn("[api] fetchChatHistory:error", { err });
+    return null;
+  }
+}
+
+export async function sendChatMessage(params: {
+  userId: number;
+  message: unknown;
+}) {
+  const { userId, message } = params;
+  console.log("[api] sendChatMessage:start", { userId });
+  const res = await fetch(`${API_BASE}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId,
+      message,
+    }),
+  });
+  if (!res.ok) {
+    console.error(await safeJson(res));
+    console.warn("[api] sendChatMessage:failed", { status: res.status });
+    return null;
+  }
+  console.log("[api] sendChatMessage:success");
+  return res.json();
+}
+
+export async function fetchEvaluationsByDate(params: {
+  userId: number;
+  startDate: string;
+}) {
+  const { userId, startDate } = params;
+  console.log("[api] fetchEvaluationsByDate:start", { userId, startDate });
+  const res = await fetch(
+    `${API_BASE}/evaluation/by-date?user_id=${userId}&start_date=${startDate}`,
+    {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+  if (!res.ok) {
+    console.warn("[api] fetchEvaluationsByDate:failed", { status: res.status });
+    return null;
+  } else {
+    console.log("[api] fetchEvaluationsByDate:success");
+  }
+  return res.json();
+}
+
+export async function fetchProfile() {
+  console.log("[api] fetchProfile:start");
+  const res = await fetch(`${API_BASE}/api/profile`);
+  if (!res.ok) throw new Error("Profile request failed");
+  console.log("[api] fetchProfile:success");
+  return res.json();
+}
+
+export async function fetchWeeklyScores() {
+  console.log("[api] fetchWeeklyScores:start");
+  const res = await fetch(`${API_BASE}/api/scores/week`);
+  if (!res.ok) throw new Error("Scores request failed");
+  console.log("[api] fetchWeeklyScores:success");
+  return res.json();
+}
+
+export async function fetchEmotionalProfile() {
+  console.log("[api] fetchEmotionalProfile:start");
+  const res = await fetch(`${API_BASE}/api/emotional-profile`);
+  if (!res.ok) throw new Error("Emotional profile request failed");
+  console.log("[api] fetchEmotionalProfile:success");
+  return res.json();
+}
+
+export async function logout() {
+  console.log("[api] logout:start");
+  return fetch(`${API_BASE}/api/auth/logout`, { method: "POST" });
+}
+
+export async function startEvaluation(userId: number) {
+  console.log("[api] startEvaluation:start", { userId });
+  const res = await fetch(`${API_BASE}/startevaluation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId }),
+  });
+  if (!res.ok) {
+    console.warn("[api] startEvaluation:failed", { status: res.status });
+  } else {
+    console.log("[api] startEvaluation:success");
+  }
+  return res.json();
+}
+
+export async function endEvaluation(evaluationId: number) {
+  console.log("[api] endEvaluation:start", { evaluationId });
+  const res = await fetch(`${API_BASE}/endevaluation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ evaluationId }),
+  });
+  if (!res.ok) {
+    console.warn("[api] endEvaluation:failed", { status: res.status });
+  } else {
+    console.log("[api] endEvaluation:success");
+  }
+  return res.json();
+}
+
+export async function analyzeFaceImage(base64: string, evaluationId: number) {
+  try {
+    const res = await fetch(`${API_BASE}/startevaluation_face`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: base64, evaluationId }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    console.log(data);
+    return {
+      emotion: data.image_label ?? "Unknown",
+      confidence:
+        typeof data.image_scores?.[data.image_label] === "number"
+          ? data.image_scores[data.image_label]
+          : 0,
+    };
+  } catch (err) {
+    console.warn("Face analysis API not available, using placeholder:", err);
+    return { emotion: "Happy", confidence: 0.87 };
+  }
+}
+
+export async function analyzeAudioClip(uri: string, evaluationId: number) {
+  try {
+    const formData = new FormData();
+    formData.append("audio", {
+      uri,
+      type: "audio/m4a",
+      name: "recording.m4a",
+    } as any);
+    formData.append("evaluationId", String(evaluationId));
+
+    const res = await fetch(`${API_BASE}/startevaluation_audio`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    console.log("Audio analysis:", data);
+    return {
+      emotion: data.audio_label ?? "Unknown",
+      confidence:
+        typeof data.audio_scores?.[data.audio_label] === "number"
+          ? data.audio_scores[data.audio_label]
+          : 0,
+    };
+  } catch (err) {
+    console.warn("Audio analysis API not available, using placeholder:", err);
+    return { emotion: "Neutral", confidence: 0.72 };
+  }
+}
+
+export async function analyzeTextEntry(text: string, evaluationId: number) {
+  try {
+    const res = await fetch(`${API_BASE}/startevaluation_text`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, evaluationId }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    console.log("Text analysis:", data);
+    return {
+      label: data.text_label ?? "Unknown",
+      scores: data.text_scores ?? {},
+    };
+  } catch (err) {
+    console.warn("Text analysis API not available, using placeholder:", err);
+    return {
+      label: "Happy",
+      scores: { Happy: 0.68, Sad: 0.2, Fear: 0.12 },
+    };
+  }
+}

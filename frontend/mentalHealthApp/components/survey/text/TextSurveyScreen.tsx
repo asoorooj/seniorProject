@@ -15,7 +15,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { API_BASE } from '@/constants/api';
+import { analyzeTextEntry } from '@/services/apiService';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG           = '#1E1830';
@@ -64,29 +64,6 @@ const AFFIRMATIONS = [
 ];
 
 // ─── API calls ────────────────────────────────────────────────────────────────
-async function analyzeText(text: string, evaluationId: number): Promise<EmotionResult> {
-  try {
-    const res = await fetch(`${API_BASE}/startevaluation_text`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, evaluationId }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    console.log('Text analysis:', data);
-    return {
-      label: data.text_label ?? 'Unknown',
-      scores: data.text_scores ?? {},
-    };
-  } catch (err) {
-    console.warn('Text analysis API not available, using placeholder:', err);
-    return {
-      label: 'Happy',
-      scores: { Happy: 0.68, Sad: 0.20, Fear: 0.12 },
-    };
-  }
-}
-
 // ─── FadeInView ───────────────────────────────────────────────────────────────
 function FadeInView({ children, style }: { children: React.ReactNode; style?: object }) {
   const opacity = useRef(new Animated.Value(0)).current;
@@ -294,7 +271,7 @@ function AnalyzingScreen({
     });
 
     if (evaluationId !== null) {
-      analyzeText(text, evaluationId).then(result => {
+      analyzeTextEntry(text, evaluationId).then(result => {
         setTimeout(() => onComplete(result), ANALYSIS_DURATION);
       });
     }
