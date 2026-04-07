@@ -1,6 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { colors } from '@/assets/styles/colors';
 import { LogEntryData } from '@/components/journal/LogEntry';
+import {
+    RawEntry,
+    getEntriesForRange,
+} from '@/services/repositories/journalRepository';
+import { syncJournalWeek } from '@/services/sync/syncController';
 import { fetchEvaluationsByDate } from '@/services/apiService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -38,22 +43,6 @@ export interface WeekData {
     here needs to change. This is the footprint for every journal entry
 */}
 
-interface RawEntry {
-    id: string;
-    // ISO 8601 e.g. "2025-03-15T20:00:00Z"
-    timestamp: string;
-    // Overall well-being score for this entry, 0–100
-    score: number;
-    // e.g. "mostly_calm"
-    mood: string;
-    journal_text: string | null;
-    suggestion: string | null;
-    tip: string | null;
-    face:  { score: number; label: string };
-    voice: { score: number; label: string };
-    text:  { score: number; label: string };
-}
-
 {/*
     Hard-coded dummy data, please replace this with a proper API call
     e.g. fetch(`/api/journal?from=${from}&to=${to}')
@@ -62,53 +51,12 @@ interface RawEntry {
     but we can change if needed
 */}
 
-function maxScore(scores: Record<string, unknown> | null | undefined): number {
-    if (!scores) return 0;
-    const entries = Object.entries(scores).filter(([k]) => k !== '_raw_label');
-    if (entries.length === 0) return 0;
-    const maxVal = Math.max(...entries.map(([, v]) => Number(v) || 0));
-    return Math.round(maxVal * 100);
-}
-
-async function fetchWeekEntries(weekStart: Date): Promise<RawEntry[]> {
-    await new Promise(r => setTimeout(r, 450)); // simulate network delay
-
-    // entries is an array keeping entries for the week, keeping date and index, followed by
-    // timestamp, then entry specific data, all are used in visualizing it in LogEntry
-    // API wise, I could iterate through a list of entries seperated by day, sunday index 0
-    // go through that data and push it to entries
-    const entries: RawEntry[] = [];
-
-    const startDate = `${weekStart.getMonth() + 1}/${weekStart.getDate()}/${weekStart.getFullYear()}`;
-    const data = await fetchEvaluationsByDate({ userId: 1, startDate });
-
-    console.log(data);
-
-    let transformedData: any[] = data.evaluations.map((entry: any) => {
-        return {
-            id: entry.evaluation.id,
-            timestamp: entry.evaluation.timestamp,
-            mood: entry.evaluation.label ?? 'unknown',
-            score: maxScore(entry.evaluation.scores),
-            face: {
-                score: maxScore(entry.image?.scores),
-                label: entry.image?.label ?? 'unknown',
-            },
-            voice: {
-                score: maxScore(entry.audio?.scores),
-                label: entry.audio?.label ?? 'unknown',
-            },
-            text: {
-                score: maxScore(entry.text?.scores),
-                label: entry.text?.label ?? 'unknown',
-            },
-            journal_text: null,
-            suggestion: entry.evaluation.suggestion,
-            tip: null,
-        };
-    });
-
-    return transformedData;
+function getWeekRange(date: Date) {
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 7);
+    return { start, end };
 }
 
 {/*
@@ -230,22 +178,121 @@ export function useJournalData() {
     const [entries, setEntries]     = useState<LogEntryData[]>([]);
     const [weekLoading, setWeekLoading] = useState(true);
     const [dayLoading, setDayLoading]   = useState(false);
+    const loadedWeeksRef = useRef<Record<string, RawEntry[]>>({});
+    const noDataWeeksRef = useRef<Record<string, boolean>>({});
+
+    const getWeekKey = (date: Date) => {
+        const weekStart = getWeekStart(date);
+        return weekStart.toISOString().split('T')[0];
+    };
+
+    const weekStartDateString = (date: Date) => {
+        const d = getWeekStart(date);
+        return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+    };
+
+    const maxScore = (scores: Record<string, unknown> | null | undefined): number => {
+        if (!scores) return 0;
+        const entries = Object.entries(scores).filter(([k]) => k !== '_raw_label');
+        if (entries.length === 0) return 0;
+        const maxVal = Math.max(...entries.map(([, v]) => Number(v) || 0));
+        return Math.round(maxVal * 100);
+    };
+
+    const mapEvaluationsToRawEntries = (data: any): RawEntry[] => {
+        if (!data?.evaluations) return [];
+        return data.evaluations.map((entry: any) => {
+            return {
+                id: entry.evaluation.id,
+                timestamp: entry.evaluation.timestamp,
+                mood: entry.evaluation.label ?? 'unknown',
+                score: maxScore(entry.evaluation.scores),
+                face: {
+                    score: maxScore(entry.image?.scores),
+                    label: entry.image?.label ?? 'unknown',
+                },
+                voice: {
+                    score: maxScore(entry.audio?.scores),
+                    label: entry.audio?.label ?? 'unknown',
+                },
+                text: {
+                    score: maxScore(entry.text?.scores),
+                    label: entry.text?.label ?? 'unknown',
+                },
+                journal_text: entry.evaluation.journal_text ?? null,
+                suggestion: entry.evaluation.suggestion ?? null,
+                tip: entry.evaluation.tip ?? null,
+            };
+        });
+    };
+
+    const isWeekInCache = (date: Date) => {
+        const currentWeekStart = getWeekStart(new Date());
+        const cutoff = new Date(currentWeekStart);
+        cutoff.setDate(cutoff.getDate() - 7 * 7);
+        const target = getWeekStart(date);
+        return target >= cutoff;
+    };
 
     // When the week changes: fetch all entries, then derive WeekData from them
     useEffect(() => {
         let cancelled = false;
         setWeekLoading(true);
 
-        fetchWeekEntries(weekStart).then(rawEntries => {
+        const run = async () => {
+            const weekKey = getWeekKey(weekStart);
+            const { start, end } = getWeekRange(getWeekStart(weekStart));
+            let rawEntries: RawEntry[] = [];
+
+            if (loadedWeeksRef.current[weekKey]) {
+                rawEntries = loadedWeeksRef.current[weekKey];
+            } else {
+                let localWeekEntries = await getEntriesForRange({ start, end });
+                if (localWeekEntries.length > 0) {
+                    rawEntries = localWeekEntries;
+                } else if (noDataWeeksRef.current[weekKey]) {
+                    rawEntries = [];
+                } else if (isWeekInCache(weekStart)) {
+                    localWeekEntries = await getEntriesForRange({ start, end });
+                    if (localWeekEntries.length === 0) {
+                        // For cached weeks, we don't fetch from API; mark empty and move on.
+                        noDataWeeksRef.current[weekKey] = true;
+                        console.log("[journal] week_cached_empty", { weekKey });
+                        rawEntries = [];
+                    } else {
+                        rawEntries = localWeekEntries;
+                    }
+                } else {
+                    const data = await fetchEvaluationsByDate({
+                        userId: 1,
+                        startDate: weekStartDateString(weekStart),
+                    });
+                    if (data && Array.isArray(data.evaluations)) {
+                        const mapped = mapEvaluationsToRawEntries(data);
+                        if (mapped.length === 0) {
+                            noDataWeeksRef.current[weekKey] = true;
+                            console.log("[journal] week_cached_empty", { weekKey });
+                        } else {
+                            loadedWeeksRef.current[weekKey] = mapped;
+                            console.log("[journal] week_cached_memory", { weekKey, count: mapped.length });
+                        }
+                        rawEntries = mapped;
+                    } else {
+                        // Server error or malformed response: do not cache, allow retry on reselect.
+                        console.warn("[journal] week_fetch_failed", { weekKey });
+                        rawEntries = [];
+                    }
+                }
+            }
+
             if (cancelled) return;
-
-            // Derive week-level aggregates from the raw entries
             const derived = buildWeekData(weekStart, rawEntries);
-
             setAllWeekEntries(rawEntries);
             setWeekData(derived);
             setWeekLoading(false);
-        });
+        };
+
+        run();
 
         return () => { cancelled = true; };
     }, [weekStart.toISOString()]);

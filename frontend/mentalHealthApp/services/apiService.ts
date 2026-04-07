@@ -11,20 +11,36 @@ async function safeJson(res: Response) {
 export async function fetchChatHistory(params: {
   userId: number;
   beforeId?: number;
+  cursor?: string | null;
+  limit?: number;
 }) {
-  const { userId, beforeId } = params;
-  const url = beforeId
-    ? `${API_BASE}/chat/history?user_id=${userId}&before_id=${beforeId}`
-    : `${API_BASE}/chat/history?user_id=${userId}`;
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-  });
-  if (!res.ok) {
-    console.error(await safeJson(res));
+  const { userId, beforeId, cursor, limit } = params;
+  console.log("[api] fetchChatHistory:start", { userId, beforeId, cursor, limit });
+  let url = `${API_BASE}/chat/history?user_id=${userId}`;
+  if (cursor) {
+    url = `${url}&cursor=${encodeURIComponent(cursor)}`;
+  } else if (beforeId) {
+    url = `${url}&before_id=${beforeId}`;
+  }
+  if (limit) {
+    url = `${url}&limit=${limit}`;
+  }
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok) {
+      console.error(await safeJson(res));
+      console.warn("[api] fetchChatHistory:failed", { status: res.status });
+      return null;
+    }
+    console.log("[api] fetchChatHistory:success");
+    return res.json();
+  } catch (err) {
+    console.warn("[api] fetchChatHistory:error", { err });
     return null;
   }
-  return res.json();
 }
 
 export async function sendChatMessage(params: {
@@ -32,6 +48,7 @@ export async function sendChatMessage(params: {
   message: unknown;
 }) {
   const { userId, message } = params;
+  console.log("[api] sendChatMessage:start", { userId });
   const res = await fetch(`${API_BASE}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -42,8 +59,10 @@ export async function sendChatMessage(params: {
   });
   if (!res.ok) {
     console.error(await safeJson(res));
+    console.warn("[api] sendChatMessage:failed", { status: res.status });
     return null;
   }
+  console.log("[api] sendChatMessage:success");
   return res.json();
 }
 
@@ -52,6 +71,7 @@ export async function fetchEvaluationsByDate(params: {
   startDate: string;
 }) {
   const { userId, startDate } = params;
+  console.log("[api] fetchEvaluationsByDate:start", { userId, startDate });
   const res = await fetch(
     `${API_BASE}/evaluation/by-date?user_id=${userId}&start_date=${startDate}`,
     {
@@ -59,46 +79,71 @@ export async function fetchEvaluationsByDate(params: {
       headers: { "Content-Type": "application/json" },
     }
   );
+  if (!res.ok) {
+    console.warn("[api] fetchEvaluationsByDate:failed", { status: res.status });
+    return null;
+  } else {
+    console.log("[api] fetchEvaluationsByDate:success");
+  }
   return res.json();
 }
 
 export async function fetchProfile() {
+  console.log("[api] fetchProfile:start");
   const res = await fetch(`${API_BASE}/api/profile`);
   if (!res.ok) throw new Error("Profile request failed");
+  console.log("[api] fetchProfile:success");
   return res.json();
 }
 
 export async function fetchWeeklyScores() {
+  console.log("[api] fetchWeeklyScores:start");
   const res = await fetch(`${API_BASE}/api/scores/week`);
   if (!res.ok) throw new Error("Scores request failed");
+  console.log("[api] fetchWeeklyScores:success");
   return res.json();
 }
 
 export async function fetchEmotionalProfile() {
+  console.log("[api] fetchEmotionalProfile:start");
   const res = await fetch(`${API_BASE}/api/emotional-profile`);
   if (!res.ok) throw new Error("Emotional profile request failed");
+  console.log("[api] fetchEmotionalProfile:success");
   return res.json();
 }
 
 export async function logout() {
+  console.log("[api] logout:start");
   return fetch(`${API_BASE}/api/auth/logout`, { method: "POST" });
 }
 
 export async function startEvaluation(userId: number) {
+  console.log("[api] startEvaluation:start", { userId });
   const res = await fetch(`${API_BASE}/startevaluation`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ userId }),
   });
+  if (!res.ok) {
+    console.warn("[api] startEvaluation:failed", { status: res.status });
+  } else {
+    console.log("[api] startEvaluation:success");
+  }
   return res.json();
 }
 
 export async function endEvaluation(evaluationId: number) {
+  console.log("[api] endEvaluation:start", { evaluationId });
   const res = await fetch(`${API_BASE}/endevaluation`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ evaluationId }),
   });
+  if (!res.ok) {
+    console.warn("[api] endEvaluation:failed", { status: res.status });
+  } else {
+    console.log("[api] endEvaluation:success");
+  }
   return res.json();
 }
 

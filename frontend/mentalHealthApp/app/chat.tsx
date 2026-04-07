@@ -16,7 +16,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MessageBubble from "../components/chat/MessageBubble";
 import { Message } from "../components/chat/Message";
 import ChatInput from "../components/chat/ChatInput";
-import { fetchChatHistory, sendChatMessage } from "@/services/apiService";
+import {
+  getHistoryPage,
+  getLatestUserEmotionLabel,
+  getAllMessages,
+  getRecentMessages,
+} from "@/services/repositories/chatRepository";
+import {
+  ensureMessageOutboxAndLocal,
+  getFallbackBeforeId,
+  syncOutbox,
+} from "@/services/sync/syncController";
+import { fetchChatHistory } from "@/services/apiService";
 
 export default function ChatScreen() {
   const router = useRouter();
@@ -26,42 +37,101 @@ export default function ChatScreen() {
   const nextBeforeId = useRef<number|undefined>(undefined);
   const isFetchingHistory = useRef<boolean>(false);
   const isAtBottomRef = useRef<boolean>(true);
+  const isAtTopRef = useRef<boolean>(false);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [messageEmotion, setMessageEmotion] = useState<string|undefined>(undefined);
   const [messages, setMessages] = useState<Message[]>([]);
+  const chatPageLimit = 20;
+
+  const mapApiMessages = (apiMessages: any[]) => {
+    return apiMessages.map((message: any) => {
+      return new Message({
+        id: message.id ?? message.server_id,
+        sessionId: message.sessionId ?? message.session_id,
+        isUser:
+          typeof message.isUser === "boolean"
+            ? message.isUser
+            : message.role === "user",
+        textMessage: message.textMessage ?? message.text_message ?? message.message ?? "",
+        timestamp: message.timestamp ? new Date(message.timestamp) : new Date(),
+      } as Message);
+    });
+  };
+
+  const getNextBeforeIdFromApi = (apiMessages: any[]) => {
+    const ids = apiMessages
+      .map((message: any) => message.id ?? message.server_id)
+      .filter((id: any) => typeof id === "number");
+    if (ids.length === 0) return undefined;
+    return Math.min(...ids);
+  };
+
+  const scheduleRetryIfNeeded = () => {
+    if (!isAtTopRef.current) return;
+    if (!hasMoreRef.current || !nextBeforeId.current) return;
+    if (retryTimeoutRef.current) return;
+    console.log("[chat] retry_scheduled", { beforeId: nextBeforeId.current });
+    retryTimeoutRef.current = setTimeout(() => {
+      retryTimeoutRef.current = null;
+      console.log("[chat] retry_fire", { beforeId: nextBeforeId.current });
+      fetchHistory(nextBeforeId.current);
+    }, 2000);
+  };
+
+  const clearRetry = () => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+  };
 
   const fetchHistory = async (beforeId?: number) => {
     if (isFetchingHistory.current) return;
     isFetchingHistory.current = true;
-    const data = await fetchChatHistory({ userId: 1, beforeId });
-    if (!data) {
-      isFetchingHistory.current = false;
-      return;
-    }
-    console.log(data);
-    hasMoreRef.current = Boolean(data.has_more);
-    nextBeforeId.current = data.next_before_id;
-
-    setMessages(prev => {
-      let newMessages = data.messages.map((message: any) => {
-        return new Message({
-          id: message.id,
-          sessionId: message.session_id,
-          isUser: message.role === "user" ? true : false,
-          textMessage: message.textMessage,
-          timestamp: message.timestamp ? new Date(message.timestamp) : new Date()
-        } as Message);
-      });
-      return beforeId ? [...newMessages, ...prev] : [...newMessages];
-    });
     if (!beforeId) {
-      const latestUserMessage = [...(data.messages || [])]
-        .reverse()
-        .find((message: any) => message.role === "user");
-      setMessageEmotion(latestUserMessage?.emotionLabel ?? null);
+      const localMessages = await getAllMessages();
+      setMessages(localMessages);
+      nextBeforeId.current = (await getFallbackBeforeId()) ?? undefined;
+      hasMoreRef.current = Boolean(nextBeforeId.current);
+    } else {
+      // Older paging: fetch older messages into memory only.
+      const data = await fetchChatHistory({
+        userId: 1,
+        beforeId,
+        limit: chatPageLimit,
+      });
+      if (!data) {
+        isFetchingHistory.current = false;
+        scheduleRetryIfNeeded();
+        return;
+      }
+      const apiMessages = data?.messages ?? [];
+      if (apiMessages.length > 0) {
+        const mapped = mapApiMessages(apiMessages);
+        const existingIds = new Set(
+          messages
+            .map((message) => message.id)
+            .filter((id) => typeof id === "number") as number[]
+        );
+        const unique = mapped.filter((message) => {
+          const id = message.id;
+          return typeof id !== "number" || !existingIds.has(id);
+        });
+        if (unique.length > 0) {
+          setMessages((prev) => [...unique, ...prev]);
+        }
+      }
+      hasMoreRef.current = apiMessages.length === chatPageLimit;
+      nextBeforeId.current =
+        data?.next_before_id ?? getNextBeforeIdFromApi(apiMessages);
     }
+    if (!beforeId) {
+      const emotion = await getLatestUserEmotionLabel();
+      setMessageEmotion(emotion ?? undefined);
+    }
+    clearRetry();
     isFetchingHistory.current = false;
-    return data;
   };
 
   useEffect(() => {
@@ -77,54 +147,26 @@ export default function ChatScreen() {
     const viewHeight = layoutMeasurement?.height ?? 0;
     const distanceFromBottom = contentHeight - viewHeight - yOffset;
     isAtBottomRef.current = distanceFromBottom <= 20;
+    isAtTopRef.current = yOffset <= 20;
     if (yOffset <= 20 && hasMoreRef.current && nextBeforeId.current) {
       fetchHistory(nextBeforeId.current);
     }
   };
 
   const handleSendMessage = async (text: string) => {
-    const newMessage = new Message({
-      // id: `${Date.now()}`,
-      sessionId: undefined,
-      isUser: true,
+    const localMessage = await ensureMessageOutboxAndLocal({
       textMessage: text,
-      timestamp: new Date(),
-      status: "sent",
+      sessionId: undefined,
     });
-    setMessages((prev) => [...prev, newMessage]);
-    const sendChatForResponse = async function(){
-      setIsGenerating(true);
-      const data = await sendChatMessage({ userId: 1, message: newMessage });
-      console.log(data);
-      setIsGenerating(false);
-      return data;
-    };
-    const response = await sendChatForResponse();
-    let responseMessage = response?.response_message;
-    let evalUserMessage = response?.user_message;
-    if (responseMessage) {
-      setMessages(prev => {
-        const newMessage = new Message({
-          id:responseMessage.id,
-          sessionId:responseMessage.sessionId,
-          isUser:responseMessage.isUser,
-          textMessage:responseMessage.textMessage,
-          timestamp: responseMessage.timestamp ? new Date(responseMessage.timestamp) : new Date()
-        });
-        return [...prev,newMessage];
-      });
-      setMessageEmotion(evalUserMessage?.emotionLabel);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-    } else if (response?.error){
-        setMessages(prev => {
-        const newMessage = new Message({
-          isUser:false,
-          textMessage:response.error,
-          timestamp: responseMessage.timestamp ? new Date(responseMessage.timestamp) : new Date()
-        });
-        return [...prev, newMessage];
-      });
-    }
+    setMessages((prev) => [...prev, localMessage]);
+    setIsGenerating(true);
+    await syncOutbox();
+    const refreshed = await getRecentMessages(50);
+    setMessages(refreshed);
+    const emotion = await getLatestUserEmotionLabel();
+    setMessageEmotion(emotion ?? undefined);
+    setIsGenerating(false);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
   };
 
   return (
