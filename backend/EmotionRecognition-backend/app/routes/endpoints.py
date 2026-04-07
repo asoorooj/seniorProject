@@ -1,8 +1,9 @@
 import base64
 import os
 from datetime import datetime, timedelta, timezone
-
 from flask import Blueprint, jsonify, request
+from app.middleware.auth import auth_required
+from flask import g
 
 from app.extensions import db
 from app.models.db_models import (
@@ -119,50 +120,70 @@ def _message_to_dict(message):
     }
 
 
-@api_bp.get("/users")
-def list_users():
-    users = User.query.order_by(User.id.asc()).all()
-    return jsonify(users=[_user_to_dict(u) for u in users]), 200
+@api_bp.get("/users/me")
+@auth_required
+def get_current_user():
+    user = g.current_user
+
+    return jsonify({
+        "user": {
+            "id": user.id,
+            "external_id": user.external_id,
+            "created_at": user.created_at.isoformat()
+        }
+    }), 200
 
 
 @api_bp.get("/users/<int:user_id>")
+@auth_required
 def get_user(user_id):
-    user = User.query.get(user_id)
+    user = g.current_user
+    if user.id != user_id:
+        return _json_error("Unauthorized", 403)
     if not user:
         return _json_error("User not found", 404)
-    return jsonify(user=_user_to_dict(user)), 200
+    return jsonify({
+        "user": {
+            "id": user.id,
+            "external_id": user.external_id,
+            "created_at": user.created_at.isoformat()
+        }
+    }), 200
 
 
-@api_bp.post("/users")
-def create_user():
-    payload = request.get_json(silent=True) or {}
-    external_id = payload.get("external_id")
-    if not external_id:
-        return _json_error("external_id is required")
-
-    user = User(external_id=external_id)
-    db.session.add(user)
-    db.session.commit()
-    return jsonify(user=_user_to_dict(user)), 201
 
 
 @api_bp.put("/users/<int:user_id>")
+@auth_required
 def update_user(user_id):
+    user = g.current_user
+
+    if user.id != user_id:
+        return jsonify({"error": "unauthorized"}), 403
+
     payload = request.get_json(silent=True) or {}
-    user = User.query.get(user_id)
-    if not user:
-        return _json_error("User not found", 404)
 
     if "external_id" in payload:
         user.external_id = payload["external_id"]
 
     db.session.commit()
-    return jsonify(user=_user_to_dict(user)), 200
+
+    return jsonify({
+        "user": {
+            "id": user.id,
+            "external_id": user.external_id,
+            "created_at": user.created_at.isoformat()
+        }
+    }), 200
 
 
 @api_bp.delete("/users/<int:user_id>")
+@auth_required
 def delete_user(user_id):
-    user = User.query.get(user_id)
+    user = g.current_user
+    user_id = user.id
+    if user.id != user_id:
+        return jsonify({"error": "unauthorized"}), 403
     if not user:
         return _json_error("User not found", 404)
 
@@ -170,9 +191,41 @@ def delete_user(user_id):
     db.session.commit()
     return jsonify(status="deleted"), 200
 
+@api_bp.put("/users/consent")
+@auth_required
+def update_consent():
+    user = g.current_user
+    payload = request.get_json(silent=True) or {}
+
+    # Allowed fields only (VERY IMPORTANT)
+    allowed_fields = ["consent_chat", "consent_image", "consent_audio"]
+
+    updated = False
+
+    for field in allowed_fields:
+        if field in payload:
+            setattr(user, field, bool(payload[field]))
+            updated = True
+
+    if not updated:
+        return jsonify({"error": "no valid fields provided"}), 400
+
+    db.session.commit()
+
+    return jsonify({
+        "message": "consent updated",
+        "consent": {
+            "consent_chat": user.consent_chat,
+            "consent_image": user.consent_image,
+            "consent_audio": user.consent_audio,
+        }
+    }), 200
+
 @api_bp.get("/evaluation/by-date")
+@auth_required
 def test_get_evaluations_by_date():
-    user_id = request.args.get("user_id", type=int)
+    user = g.current_user
+    user_id = user.id
     start_date_raw = request.args.get("start_date")
     if not user_id:
         return jsonify(error="user_id is required"), 400
@@ -273,8 +326,10 @@ def test_get_evaluations_by_date():
     return jsonify(evaluations=payload), 200
 
 @api_bp.post("/recieve_eval_data")
+@auth_required
 def recieve_eval():
-    user_id = 1
+    user = g.current_user
+    user_id = user.id
     try:
         audio_file_suffix = ".wav"
 
@@ -509,9 +564,12 @@ def save_full_evaluation(
         }
     
 @api_bp.post("/startevaluation")
+@auth_required
 def start_evaluation():
+
     payload = request.get_json(silent=True) or {}
-    user_id = payload.get("userId")
+    user = g.current_user
+    user_id = user.id
     try:
         evaluation = Evaluation(
             user_id=user_id,
@@ -535,10 +593,16 @@ def start_evaluation():
     })
 
 @api_bp.post("/startevaluation_face")
+@auth_required
 def start_evaluation_face():
+    user = g.current_user
     payload = request.get_json(silent=True) or {}
-    user_id = payload.get("userId")
+
     evaluation_id = payload.get("evaluationId")
+    evaluation = Evaluation.query.get(evaluation_id)
+
+    if not evaluation or evaluation.user_id != user.id:
+        return jsonify({"error": "unauthorized"}), 403
     try:
         image_bytes = None
         if request.mimetype and request.mimetype.startswith("multipart/form-data"):
@@ -585,11 +649,16 @@ def start_evaluation_face():
     })
 
 @api_bp.post("/startevaluation_text")
+@auth_required
 def start_eval_text():
+    user = g.current_user
     payload = request.get_json(silent=True) or {}
-    user_id = payload.get("userId")
+
     evaluation_id = payload.get("evaluationId")
     text = payload.get("text")
+    evaluation = Evaluation.query.get(evaluation_id)
+    if not evaluation or evaluation.user_id != user.id:
+        return jsonify({"error": "unauthorized"}), 403
     try:
         pred, probs, vec = predict_emotion_text(text)
         text_eval = TextEvalutations.query.filter_by(
@@ -624,10 +693,15 @@ def start_eval_text():
     })
 
 @api_bp.post("/startevaluation_audio")
+@auth_required
 def start_eval_audio():
+    user = g.current_user
     payload = request.get_json(silent=True) or {}
-    user_id = payload.get("userId")
+
     evaluation_id = payload.get("evaluationId")
+    evaluation = Evaluation.query.get(evaluation_id)
+    if not evaluation or evaluation.user_id != user.id:
+        return jsonify({"error": "unauthorized"}), 403
     try:
         audio_bytes = None
         audio_file_suffix = ".wav"
@@ -684,15 +758,26 @@ def _scores_to_fusion_vector(scores):
     return None
 
 @api_bp.post("/endevaluation")
+@auth_required
 def end_evaluation():
     payload = request.get_json(silent=True) or {}
+    user = g.current_user
+    
+    
+
     evaluation_id = payload.get("evaluationId")
+
     if not evaluation_id:
-        return jsonify({"error": "evaluationId is required"}), 400
+        return jsonify({"error": "evaluationId required"}), 400
 
     evaluation = Evaluation.query.get(evaluation_id)
+
     if not evaluation:
-        return jsonify({"error": "evaluation not found"}), 404
+        return jsonify({"error": "not found"}), 404
+
+    if evaluation.user_id != user.id:
+        return jsonify({"error": "unauthorized"}), 403
+    
 
     text_eval = TextEvalutations.query.filter_by(evaluation_id=evaluation_id).first()
     image_eval = ImageEvalutations.query.filter_by(evaluation_id=evaluation_id).first()
@@ -739,10 +824,12 @@ def end_evaluation():
     }), 200
 
 @api_bp.post("/chat")
+@auth_required
 def chat_with_gemini():
     payload = request.get_json(silent=True) or {}
     message_payload = payload.get("message")
-    user_id = payload.get("userId")
+    user = g.current_user
+    user_id = user.id
     if not isinstance(message_payload, dict):
         return _json_error("message is required and must be an object", 400)
     text_message = message_payload.get("textMessage")
@@ -796,9 +883,11 @@ def chat_with_gemini():
 
 
 @api_bp.get("/chat/history")
+@auth_required
 def get_chat_history_endpoint():
+    user = g.current_user
+    user_id = user.id
     session_id = request.args.get("session_id", type=int)
-    user_id = request.args.get("user_id", type=int)
     before_id = request.args.get("before_id", type=int)
     limit = request.args.get("limit", type=int) or 20
 

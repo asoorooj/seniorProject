@@ -5,3 +5,11 @@ Flask-SQLAlchemy==3.1.1
 Flask-Migrate==4.0.7
 pymysql==1.1.0
 google-genai
+torch==2.11.0
+numpy==2.4.4
+pandas==3.0.2
+transformers==4.30.2
+matplotlib==3.10.8
+torchvision==0.26.0
+opensmile==2.6.0
+librosa==0.11.0

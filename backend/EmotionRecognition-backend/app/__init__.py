@@ -1,8 +1,10 @@
+from datetime import timedelta
 import os
-from flask import Flask, jsonify
+from flask import Flask, app, jsonify
 from dotenv import load_dotenv
 
 from app.extensions import cors, db, migrate
+
 
 
 
@@ -11,14 +13,14 @@ def create_app():
     load_dotenv()
 
     
-    flask_app = Flask(__name__)  # ✅ rename to avoid name collisions
-
+    flask_app = Flask(__name__)  
     # Config
     flask_app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
     flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     flask_app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
     flask_app.config["API_TOKEN"] = os.getenv("API_TOKEN", "")
     flask_app.config["JSON_SORT_KEYS"] = False
+    
 
     from app.routes.db_test import db_test_bp
     flask_app.register_blueprint(db_test_bp)
@@ -37,6 +39,9 @@ def create_app():
 
     from app.routes.endpoints import api_bp
     flask_app.register_blueprint(api_bp)
+
+    from app.routes.auth_routes import auth_bp
+    flask_app.register_blueprint(auth_bp)
 
     # Error handlers
     @flask_app.errorhandler(404)
