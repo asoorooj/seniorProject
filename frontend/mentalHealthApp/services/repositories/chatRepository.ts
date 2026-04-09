@@ -33,10 +33,13 @@ export async function getRecentMessages(
 ) {
   await initDb();
   const result = await executeSqlAsync(
-    `SELECT * FROM messages
-     WHERE user_id = ? AND deleted_at IS NULL
-     ORDER BY datetime(timestamp) DESC
-     LIMIT ?;`,
+    `SELECT * FROM (
+       SELECT * FROM messages
+       WHERE user_id = ? AND deleted_at IS NULL
+       ORDER BY datetime(timestamp) DESC, is_user DESC, COALESCE(server_id, local_id) DESC
+       LIMIT ?
+     )
+     ORDER BY datetime(timestamp) ASC, is_user DESC, COALESCE(server_id, local_id) ASC;`,
     [userId, limit]
   );
   const rows = result.rows as any;
@@ -54,7 +57,7 @@ export async function getRecentMessages(
       })
     );
   }
-  return items.reverse();
+  return items;
 }
 
 export async function getAllMessages(userId: number = getCurrentUserId()) {
@@ -62,7 +65,7 @@ export async function getAllMessages(userId: number = getCurrentUserId()) {
   const result = await executeSqlAsync(
     `SELECT * FROM messages
      WHERE user_id = ? AND deleted_at IS NULL
-     ORDER BY datetime(timestamp) ASC;`,
+     ORDER BY datetime(timestamp) ASC, is_user DESC, COALESCE(server_id, local_id) ASC;`,
     [userId]
   );
   const rows = result.rows as any;
