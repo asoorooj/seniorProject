@@ -20,7 +20,6 @@ import {
   getHistoryPage,
   getLatestUserEmotionLabel,
   getAllMessages,
-  getRecentMessages,
 } from "@/services/repositories/chatRepository";
 import {
   ensureMessageOutboxAndLocal,
@@ -28,6 +27,7 @@ import {
   syncOutbox,
 } from "@/services/sync/syncController";
 import { fetchChatHistory } from "@/services/apiService";
+import { getCurrentUserId } from "@/services/db";
 
 export default function ChatScreen() {
   const router = useRouter();
@@ -43,6 +43,27 @@ export default function ChatScreen() {
   const [messageEmotion, setMessageEmotion] = useState<string|undefined>(undefined);
   const [messages, setMessages] = useState<Message[]>([]);
   const chatPageLimit = 20;
+
+  const messageKey = (message: Message, index = 0) => {
+    const idPart =
+      typeof message.id === "number" ? String(message.id) : "local";
+    const timePart =
+      message.timestamp instanceof Date
+        ? String(message.timestamp.getTime())
+        : String(new Date(message.timestamp).getTime());
+    return `${idPart}-${message.isUser ? "u" : "b"}-${timePart}-${index}`;
+  };
+
+  // const sortMessages = (items: Message[]) =>
+  //   [...items].sort((a, b) => {
+  //     const timeA = a.timestamp?.getTime?.() ?? new Date(a.timestamp as any).getTime();
+  //     const timeB = b.timestamp?.getTime?.() ?? new Date(b.timestamp as any).getTime();
+  //     if (timeA !== timeB) return timeA - timeB;
+  //     if (a.isUser !== b.isUser) return a.isUser ? -1 : 1;
+  //     const aId = typeof a.id === "number" ? a.id : Number.MAX_SAFE_INTEGER;
+  //     const bId = typeof b.id === "number" ? b.id : Number.MAX_SAFE_INTEGER;
+  //     return aId - bId;
+  //   });
 
   const mapApiMessages = (apiMessages: any[]) => {
     return apiMessages.map((message: any) => {
@@ -97,7 +118,7 @@ export default function ChatScreen() {
     } else {
       // Older paging: fetch older messages into memory only.
       const data = await fetchChatHistory({
-        userId: 1,
+        userId: getCurrentUserId(),
         beforeId,
         limit: chatPageLimit,
       });
@@ -109,18 +130,19 @@ export default function ChatScreen() {
       const apiMessages = data?.messages ?? [];
       if (apiMessages.length > 0) {
         const mapped = mapApiMessages(apiMessages);
-        const existingIds = new Set(
-          messages
-            .map((message) => message.id)
-            .filter((id) => typeof id === "number") as number[]
-        );
-        const unique = mapped.filter((message) => {
-          const id = message.id;
-          return typeof id !== "number" || !existingIds.has(id);
+        setMessages((prev) => {
+          const existingIds = new Set(
+            prev
+              .map((message) => message.id)
+              .filter((id) => typeof id === "number") as number[]
+          );
+          const unique = mapped.filter((message) => {
+            const id = message.id;
+            return typeof id !== "number" || !existingIds.has(id);
+          });
+          if (unique.length === 0) return prev;
+          return [...unique, ...prev];
         });
-        if (unique.length > 0) {
-          setMessages((prev) => [...unique, ...prev]);
-        }
       }
       hasMoreRef.current = apiMessages.length === chatPageLimit;
       nextBeforeId.current =
@@ -154,19 +176,57 @@ export default function ChatScreen() {
   };
 
   const handleSendMessage = async (text: string) => {
+    new Message({id:undefined,sessionId:undefined,isUser:true, textMessage:text,timestamp: new Date()})
+    setMessages((prev) => [...prev, new Message({id:undefined,sessionId:undefined,isUser:true, textMessage:text,timestamp: new Date()})]);
     const localMessage = await ensureMessageOutboxAndLocal({
       textMessage: text,
       sessionId: undefined,
     });
-    setMessages((prev) => [...prev, localMessage]);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 30);
     setIsGenerating(true);
-    await syncOutbox();
-    const refreshed = await getRecentMessages(50);
-    setMessages(refreshed);
-    const emotion = await getLatestUserEmotionLabel();
-    setMessageEmotion(emotion ?? undefined);
-    setIsGenerating(false);
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+    try {
+      const responses = await syncOutbox();
+      const latest = responses?.length ? responses[responses.length - 1] : null;
+
+      // Append bot reply directly from API response so UI updates immediately.
+      const responseMessage = latest?.response_message;
+      console.log(latest,"LATEEDT")
+      if (responseMessage) {
+        const botMessage = new Message({
+          id: responseMessage.id ?? responseMessage.server_id,
+          sessionId: responseMessage.sessionId ?? responseMessage.session_id,
+          isUser:
+            typeof responseMessage.isUser === "boolean"
+              ? responseMessage.isUser
+              : responseMessage.role === "user",
+          textMessage:
+            responseMessage.textMessage ??
+            responseMessage.text_message ??
+            responseMessage.message ??
+            "",
+          timestamp: responseMessage.timestamp
+            ? new Date(responseMessage.timestamp)
+            : new Date(),
+        } as Message);
+        setMessages((prev) => [...prev, botMessage]);
+      }
+
+      // Update mood pill from latest analyzed user emotion in the same response.
+      const latestEmotion =
+        latest?.user_message?.emotionLabel ??
+        latest?.user_message?.emotion_label;
+      if (latestEmotion) {
+        setMessageEmotion(latestEmotion);
+      } else {
+        const emotion = await getLatestUserEmotionLabel();
+        setMessageEmotion(emotion ?? undefined);
+      }
+    } catch (error) {
+      console.warn("[chat] handleSendMessage:error", error);
+    } finally {
+      setIsGenerating(false);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+    }
   };
 
   return (
@@ -223,8 +283,8 @@ export default function ChatScreen() {
             </View>
           </View>
         }
-        {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
+        {messages.map((message, index) => (
+          <MessageBubble key={messageKey(message, index)} message={message} />
         ))}
         {isGenerating && (
           <View style={styles.loadingRow}>
