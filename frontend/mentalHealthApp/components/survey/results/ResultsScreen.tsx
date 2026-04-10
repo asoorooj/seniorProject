@@ -52,11 +52,11 @@ function formatNow(): string {
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
-async function callEndEvaluation(evaluationId: number): Promise<string | null> {
+async function callEndEvaluation(evaluationId: number): Promise<{evaluation_id:number; label:string; status:string; suggestion:string; scores:string;} | null> {
   try {
     const data = await endEvaluation(evaluationId);
     console.log('Fusion result:', data);
-    return data.label ?? null;
+    return data;
   } catch (err) {
     console.warn('endevaluation failed:', err);
     return null;
@@ -128,19 +128,21 @@ export default function ResultsScreen() {
   const textLabel    = params.textLabel  ?? 'Neutral';
   const textConf     = Number(params.textConf  ?? 0);
 
-  const [fusionLabel, setFusionLabel] = useState<string | null>(null);
+  const [fusionModelData, setFusionModelData] = useState< {evaluation_id:number; label:string; status:string; suggestion:string; scores:string;} | null>(null);
   const [loading,     setLoading]     = useState(true);
 
   const heroOpacity  = useRef(new Animated.Value(0)).current;
   const heroScale    = useRef(new Animated.Value(0.96)).current;
   const btnOpacity   = useRef(new Animated.Value(0)).current;
 
+  useEffect(()=>console.log("here",fusionModelData),[fusionModelData])
+
   useEffect(() => {
     const run = async () => {
-      const label = evaluationId !== null
+      const data = evaluationId !== null
         ? await callEndEvaluation(evaluationId)
-        : 'Neutral';
-      setFusionLabel(label ?? 'Neutral');
+        : null;
+      setFusionModelData(data);
       setLoading(false);
 
       Animated.parallel([
@@ -152,7 +154,7 @@ export default function ResultsScreen() {
     run();
   }, []);
 
-  const moodPhrase = FUSION_PHRASE[fusionLabel ?? 'Neutral'] ?? 'Mostly Calm';
+  const moodPhrase = FUSION_PHRASE[fusionModelData?.label ?? 'Neutral'] ?? 'Mostly Calm';
 
   if (loading) {
     return (
@@ -190,6 +192,17 @@ export default function ResultsScreen() {
           </View>
           <Text style={styles.moodLabel}>{moodPhrase}</Text>
           <Text style={styles.heroDate}>{formatNow()}</Text>
+        </LinearGradient>
+      </Animated.View>
+
+      <Animated.View style={[{ opacity: heroOpacity, transform: [{ scale: heroScale }] }]}>
+        <LinearGradient
+          colors={[HERO_TOP, '#1E1830']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={styles.heroCard}
+        >
+          <Text style={styles.moodSuggestionLabel}>{fusionModelData?.suggestion || "Nice Results!"}</Text>
         </LinearGradient>
       </Animated.View>
 
@@ -300,6 +313,13 @@ const styles = StyleSheet.create({
     color: TEXT_PRIMARY,
     fontSize: 26,
     fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  moodSuggestionLabel: {
+    color: TEXT_PRIMARY,
+    fontSize: 22,
+    fontWeight: '600',
     textAlign: 'center',
     marginBottom: 6,
   },
