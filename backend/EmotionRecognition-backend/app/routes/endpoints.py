@@ -1,5 +1,7 @@
 import base64
 import os
+import requests
+import time
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request
 from app.middleware.auth import auth_required
@@ -36,6 +38,7 @@ from google import genai
 
 api_bp = Blueprint("api", __name__)
 
+CLOUDCONVERT_API_KEY = os.getenv("CLOUD_CONVERT_KEY")
 
 def _parse_iso_dt(value, field_name):
     if value is None:
@@ -56,7 +59,12 @@ def _user_to_dict(user):
     return {
         "id": user.id,
         "external_id": user.external_id,
-        "created_at": user.created_at.isoformat(),
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "email": user.email,
+        "consent_chat": user.consent_chat,
+        "consent_image": user.consent_image,
+        "consent_audio": user.consent_audio,
+        "consent_timestamp": user.consent_timestamp.isoformat() if user.consent_timestamp else None,
     }
 
 def _parse_js_date(value):
@@ -508,6 +516,12 @@ def save_full_evaluation(
 def start_evaluation():
     payload = request.get_json(silent=True) or {}
     user_id = payload.get("userId")
+    if not user_id:
+        return jsonify({
+            "evaluation_id": None,
+            "status": "skipped saving evaluation (missing userId)",
+            "db_saved": False,
+        }), 200
     try:
         evaluation = Evaluation(
             user_id=user_id,
@@ -540,6 +554,8 @@ def start_evaluation_face():
         if request.mimetype and request.mimetype.startswith("multipart/form-data"):
             image_file = request.files.get("image")
             image_bytes = image_file.read() if image_file else None
+            user_id = user_id or request.form.get("userId")
+            evaluation_id = evaluation_id or request.form.get("evaluationId")
         elif request.is_json:
             image_b64 = payload.get("image")
             if image_b64:
@@ -548,24 +564,27 @@ def start_evaluation_face():
                     image_b64 = image_b64 + '=' * (-len(image_b64) % 4)
                     image_bytes = base64.b64decode(image_b64)
         pred, probs, vec = predict_face(image_bytes)
-        image_eval = ImageEvalutations.query.filter_by(
-            evaluation_id=evaluation_id
-        ).first()
         scores = _vector_to_scores_dict(vec)
-        if image_eval:
-            image_eval.label = pred
-            image_eval.scores = scores
-            image_eval.data = None
-        else:
-            image_eval = ImageEvalutations(
-                evaluation_id=evaluation_id,
-                label=pred,
-                scores=scores,
-                data=None
-            )
-            db.session.add(image_eval)
-        db.session.flush() 
-        db.session.commit() 
+        db_saved = False
+        if user_id and evaluation_id:
+            image_eval = ImageEvalutations.query.filter_by(
+                evaluation_id=evaluation_id
+            ).first()
+            if image_eval:
+                image_eval.label = pred
+                image_eval.scores = scores
+                image_eval.data = None
+            else:
+                image_eval = ImageEvalutations(
+                    evaluation_id=evaluation_id,
+                    label=pred,
+                    scores=scores,
+                    data=None
+                )
+                db.session.add(image_eval)
+            db.session.flush()
+            db.session.commit()
+            db_saved = True
     except Exception as e:        
         db.session.rollback()
         print("ERROR:", str(e)) 
@@ -575,9 +594,10 @@ def start_evaluation_face():
         }), 500
     return jsonify({
         "evaluation_id":evaluation_id,
-        "status": "succesfully created evaluation",
-        "image_label":image_eval.label,
-        "image_scores":image_eval.scores,
+        "status": "succesfully ran face evaluation",
+        "db_saved": db_saved,
+        "image_label": pred,
+        "image_scores": scores,
     })
 
 @api_bp.post("/startevaluation_text")
@@ -588,24 +608,27 @@ def start_eval_text():
     text = payload.get("text")
     try:
         pred, probs, vec = predict_emotion_text(text)
-        text_eval = TextEvalutations.query.filter_by(
-            evaluation_id=evaluation_id
-        ).first()
         scores = _vector_to_scores_dict(vec)
-        if text_eval:
-            text_eval.label = pred
-            text_eval.scores = scores
-            text_eval.data = text
-        else:
-            text_eval = TextEvalutations(
-                evaluation_id=evaluation_id,
-                label=pred,
-                scores=scores,
-                data=text
-            )
-            db.session.add(text_eval)
-        db.session.flush()
-        db.session.commit()
+        db_saved = False
+        if user_id and evaluation_id:
+            text_eval = TextEvalutations.query.filter_by(
+                evaluation_id=evaluation_id
+            ).first()
+            if text_eval:
+                text_eval.label = pred
+                text_eval.scores = scores
+                text_eval.data = text
+            else:
+                text_eval = TextEvalutations(
+                    evaluation_id=evaluation_id,
+                    label=pred,
+                    scores=scores,
+                    data=text
+                )
+                db.session.add(text_eval)
+            db.session.flush()
+            db.session.commit()
+            db_saved = True
     except Exception:
         db.session.rollback()
         return jsonify({
@@ -614,9 +637,10 @@ def start_eval_text():
         }), 500
     return jsonify({
         "evaluation_id": evaluation_id,
-        "status": "succesfully created evaluation",
-        "text_label":text_eval.label,
-        "text_scores":text_eval.scores,
+        "status": "succesfully ran text evaluation",
+        "db_saved": db_saved,
+        "text_label": pred,
+        "text_scores": scores,
     })
 
 @api_bp.post("/startevaluation_audio")
@@ -624,50 +648,87 @@ def start_eval_audio():
     payload = request.get_json(silent=True) or {}
     user_id = payload.get("userId")
     evaluation_id = payload.get("evaluationId")
+
     try:
         audio_bytes = None
         audio_file_suffix = ".wav"
+
         if request.mimetype and request.mimetype.startswith("multipart/form-data"):
             audio_file = request.files.get("audio")
+
             if audio_file:
                 audio_bytes = audio_file.read()
+
+                # detect extension
                 _, ext = os.path.splitext(audio_file.filename or "")
                 if ext:
-                    audio_file_suffix = ext
+                    audio_file_suffix = ext.lower()
+
+            user_id = user_id or request.form.get("userId")
+            evaluation_id = evaluation_id or request.form.get("evaluationId")
+
         elif request.is_json:
             audio_b64 = payload.get("audio")
             if audio_b64:
                 audio_bytes = base64.b64decode(audio_b64)
-        pred, probs, _, _, vec = predict_audio_file(audio_bytes, file_suffix=audio_file_suffix)
-        audio_eval = AudioEvalutations.query.filter_by(
-            evaluation_id=evaluation_id
-        ).first()
+
+        # ❗ SAFETY CHECK
+        if not audio_bytes:
+            return jsonify({
+                "status": "error",
+                "message": "No audio provided"
+            }), 400
+
+        # 🔥 M4A → CLOUDCONVERT PATH
+        if audio_file_suffix == ".m4a":
+            print("converting")
+            audio_bytes = convert_m4a_bytes_to_wav_bytes(audio_bytes)
+            audio_file_suffix = ".wav"
+
+        # 🎯 RUN PREDICTION (always WAV at this point)
+        pred, probs, _, _, vec = predict_audio_file(
+            audio_bytes,
+            file_suffix=audio_file_suffix
+        )
+
         scores = _vector_to_scores_dict(vec)
-        if audio_eval:
-            audio_eval.label = pred
-            audio_eval.scores = scores
-            audio_eval.data = None
-        else:
-            audio_eval = AudioEvalutations(
-                evaluation_id=evaluation_id,
-                label=pred,
-                scores=scores,
-                data=None
-            )
-            db.session.add(audio_eval)
-        db.session.flush()
-        db.session.commit()
+        db_saved = False
+
+        if user_id and evaluation_id:
+            audio_eval = AudioEvalutations.query.filter_by(
+                evaluation_id=evaluation_id
+            ).first()
+
+            if audio_eval:
+                audio_eval.label = pred
+                audio_eval.scores = scores
+                audio_eval.data = None
+            else:
+                audio_eval = AudioEvalutations(
+                    evaluation_id=evaluation_id,
+                    label=pred,
+                    scores=scores,
+                    data=None
+                )
+                db.session.add(audio_eval)
+
+            db.session.flush()
+            db.session.commit()
+            db_saved = True
+
     except Exception:
         db.session.rollback()
         return jsonify({
             "status": "error",
             "message": "failed to create an audio evaluation"
         }), 500
+
     return jsonify({
         "evaluation_id": evaluation_id,
-        "status": "succesfully created evaluation",
-        "audio_label":audio_eval.label,
-        "audio_scores":audio_eval.scores,
+        "status": "succesfully ran audio evaluation",
+        "db_saved": db_saved,
+        "audio_label": pred,
+        "audio_scores": scores,
     })
 
 def _scores_to_fusion_vector(scores):
@@ -821,3 +882,97 @@ def get_chat_history_endpoint():
 
     payload = get_chat_history(session_id, limit=limit, before_id=before_id)
     return jsonify(payload), 200
+
+def convert_m4a_bytes_to_wav_bytes(m4a_bytes: bytes) -> bytes:
+    print("convert function")
+    try:
+        headers = {
+            "Authorization": f"Bearer {CLOUDCONVERT_API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        # 1. Create upload task
+        job_payload = {
+            "tasks": {
+                "upload-my-file": {
+                    "operation": "import/upload"
+                },
+                "convert-my-file": {
+                    "operation": "convert",
+                    "input": "upload-my-file",
+                    "output_format": "wav"
+                },
+                "export-my-file": {
+                    "operation": "export/url",
+                    "input": "convert-my-file"
+                }
+            }
+        }
+
+        job_res = requests.post(
+            "https://api.cloudconvert.com/v2/jobs",
+            json=job_payload,
+            headers=headers
+        )
+
+        print(job_res)
+
+        job = job_res.json()["data"]
+        tasks = job["tasks"]
+
+
+        upload_task = next(t for t in tasks if t["name"] == "upload-my-file")
+        upload_url = upload_task["result"]["form"]["url"]
+        upload_fields = upload_task["result"]["form"]["parameters"]
+
+        # 2. Upload file bytes to CloudConvert
+        files = {
+            "file": ("audio.m4a", m4a_bytes)
+        }
+
+        upload_res = requests.post(
+            upload_url,
+            data=upload_fields,
+            files=files
+        )
+
+        if upload_res.status_code not in [200, 201, 204]:
+            raise Exception("Upload to CloudConvert failed")
+
+        job_id = job["id"]
+
+        # 3. Poll job until finished
+        while True:
+            job_status = requests.get(
+                f"https://api.cloudconvert.com/v2/jobs/{job_id}",
+                headers=headers
+            ).json()["data"]
+
+            status = job_status["status"]
+
+            if status == "finished":
+                break
+            if status == "error":
+                raise Exception("CloudConvert job failed")
+
+            time.sleep(2)
+
+        # 4. Get export URL
+        export_task = next(
+            t for t in job_status["tasks"]
+            if t["name"] == "export-my-file"
+        )
+
+        file_url = export_task["result"]["files"][0]["url"]
+
+        # 5. Download WAV file
+        wav_response = requests.get(file_url)
+
+        if wav_response.status_code != 200:
+            raise Exception("Failed to download WAV file")
+    except Exception as e:
+        print(e)
+        raise Exception(e)
+
+    return wav_response.content
+        
