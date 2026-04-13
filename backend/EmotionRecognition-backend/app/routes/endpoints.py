@@ -57,6 +57,16 @@ def _user_to_dict(user):
         "id": user.id,
         "external_id": user.external_id,
         "created_at": user.created_at.isoformat(),
+        "consent": {
+            "consent_chat": user.consent_chat,
+            "consent_image": user.consent_image,
+            "consent_audio": user.consent_audio,
+        },
+        "preferences": {
+            "eval_face": user.pref_eval_face,
+            "eval_audio": user.pref_eval_audio,
+            "eval_text": user.pref_eval_text,
+        },
     }
 
 def _parse_js_date(value):
@@ -159,6 +169,39 @@ def update_user(user_id):
 
     db.session.commit()
     return jsonify(user=_user_to_dict(user)), 200
+
+
+@api_bp.put("/users/<int:user_id>/preferences")
+def update_user_preferences(user_id):
+    payload = request.get_json(silent=True) or {}
+    user = User.query.get(user_id)
+    if not user:
+        return _json_error("User not found", 404)
+
+    allowed_fields = {
+        "eval_face": "pref_eval_face",
+        "eval_audio": "pref_eval_audio",
+        "eval_text": "pref_eval_text",
+    }
+
+    updated = False
+    for field, attr_name in allowed_fields.items():
+        if field in payload:
+            setattr(user, attr_name, bool(payload[field]))
+            updated = True
+
+    if not updated:
+        return _json_error("no valid fields provided")
+
+    db.session.commit()
+    return jsonify(
+        message="preferences updated",
+        preferences={
+            "eval_face": user.pref_eval_face,
+            "eval_audio": user.pref_eval_audio,
+            "eval_text": user.pref_eval_text,
+        },
+    ), 200
 
 
 @api_bp.delete("/users/<int:user_id>")
@@ -737,6 +780,25 @@ def end_evaluation():
         "label": fusion_label,
         "scores": fusion_scores,
         "suggestion": suggestion,
+    }), 200
+
+
+@api_bp.delete("/evaluation/<int:evaluation_id>")
+def cancel_evaluation(evaluation_id):
+    evaluation = Evaluation.query.get(evaluation_id)
+    if not evaluation:
+        return jsonify({"error": "evaluation not found"}), 404
+
+    try:
+        db.session.delete(evaluation)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": "failed to delete evaluation"}), 500
+
+    return jsonify({
+        "status": "deleted",
+        "evaluation_id": evaluation_id,
     }), 200
 
 @api_bp.post("/chat")

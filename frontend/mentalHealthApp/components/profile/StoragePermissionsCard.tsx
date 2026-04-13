@@ -1,40 +1,38 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { capsule, colors } from "@/assets/styles/colors";
+import type { UserPreferences } from '@/services/apiService';
 
 type Permission = {
-  id: string;
+  id: keyof UserPreferences;
   name: string;
   icon: keyof typeof MaterialIcons.glyphMap;
   enabled: boolean;
 };
 
-export function StoragePermissionsCard() {
-  const [permissions, setPermissions] = useState<Permission[]>([
-    { id: 'text',   name: 'Text',   icon: 'article',      enabled: true  },
-    { id: 'mic',    name: 'Mic',    icon: 'mic',          enabled: false },
-    { id: 'camera', name: 'Camera', icon: 'photo-camera', enabled: false },
-  ]);
+type Props = {
+  preferences: UserPreferences;
+  saving?: boolean;
+  onToggle: (id: keyof UserPreferences) => void;
+};
 
-  const toggle = (id: string) =>
-    setPermissions((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, enabled: !p.enabled } : p))
-    );
-
-  const handleManage = () => Linking.openSettings();
+export function StoragePermissionsCard({ preferences, saving = false, onToggle }: Props) {
+  const permissionItems: Permission[] = [
+    { id: 'eval_text', name: 'Text', icon: 'article', enabled: preferences.eval_text },
+    { id: 'eval_audio', name: 'Voice', icon: 'mic', enabled: preferences.eval_audio },
+    { id: 'eval_face', name: 'Face', icon: 'photo-camera', enabled: preferences.eval_face },
+  ];
 
   return (
     <View style={capsule}>
       <View style={styles.header}>
-        <Text style={styles.title}>Storage Permissions</Text>
-        <TouchableOpacity onPress={handleManage}>
-          <Text style={styles.manage}>Manage →</Text>
-        </TouchableOpacity>
+        <Text style={styles.title}>Evaluation Preferences</Text>
+        <Text style={styles.manage}>{saving ? 'Saving...' : 'Controls your check-in flow'}</Text>
       </View>
       <View style={styles.row}>
-        {permissions.map((perm) => (
-          <TouchableOpacity key={perm.id} style={styles.permItem} onPress={() => toggle(perm.id)}>
+        {permissionItems.map((perm) => (
+          <TouchableOpacity key={perm.id} style={styles.permItem} onPress={() => onToggle(perm.id)}>
             <View style={[styles.iconBox, perm.enabled ? styles.iconBoxOn : styles.iconBoxOff]}>
               <MaterialIcons
                 name={perm.icon}

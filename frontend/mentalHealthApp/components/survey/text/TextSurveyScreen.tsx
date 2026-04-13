@@ -15,7 +15,12 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { analyzeTextEntry } from '@/services/apiService';
+import {
+  analyzeTextEntry,
+  cancelEvaluation,
+  type UserPreferences,
+} from '@/services/apiService';
+import { DEFAULT_EVALUATION_PREFERENCES } from '@/services/evaluationFlow';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG           = '#1E1830';
@@ -309,10 +314,12 @@ function ResultScreen({
   result,
   onFinish,
   onRewrite,
+  onSkip,
 }: {
   result: EmotionResult | null;
   onFinish: () => void;
   onRewrite: () => void;
+  onSkip: () => void;
 }) {
   const checkScale = useRef(new Animated.Value(0)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
@@ -367,6 +374,9 @@ function ResultScreen({
             <Text style={styles.ctaButtonText}>See Full Results</Text>
           </LinearGradient>
         </TouchableOpacity>
+        <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={{ marginTop: 14 }}>
+          <Text style={styles.rewriteText}>Skip this step</Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={onRewrite} activeOpacity={0.7} style={{ marginTop: 14 }}>
           <Text style={styles.rewriteText}>Re-write</Text>
         </TouchableOpacity>
@@ -382,14 +392,26 @@ export default function TextSurveyScreen() {
     evaluationId?: string;
     faceLabel?: string;
     faceConf?: string;
+    faceSkipped?: string;
     audioLabel?: string;
     audioConf?: string;
+    audioSkipped?: string;
+    prefFace?: string;
+    prefAudio?: string;
+    prefText?: string;
   }>();
   const evaluationId = params.evaluationId ? Number(params.evaluationId) : null;
   const faceLabel    = params.faceLabel  ?? 'Neutral';
   const faceConf     = params.faceConf   ?? '0';
+  const faceSkipped  = params.faceSkipped ?? 'false';
   const audioLabel   = params.audioLabel ?? 'Neutral';
   const audioConf    = params.audioConf  ?? '0';
+  const audioSkipped = params.audioSkipped ?? 'false';
+  const preferences: UserPreferences = {
+    eval_face: params.prefFace ? params.prefFace === 'true' : DEFAULT_EVALUATION_PREFERENCES.eval_face,
+    eval_audio: params.prefAudio ? params.prefAudio === 'true' : DEFAULT_EVALUATION_PREFERENCES.eval_audio,
+    eval_text: params.prefText ? params.prefText === 'true' : DEFAULT_EVALUATION_PREFERENCES.eval_text,
+  };
 
   const [step,    setStep]    = useState<TextStep>('prompt-select');
   const [prompts] = useState<string[]>(pickPrompts);
@@ -397,8 +419,31 @@ export default function TextSurveyScreen() {
   const [text,    setText]    = useState('');
   const [result,  setResult]  = useState<EmotionResult | null>(null);
 
+  useEffect(() => {
+    if (!preferences.eval_text) {
+      router.replace({
+        pathname: '/survey-results' as any,
+        params: {
+          evaluationId: String(evaluationId),
+          faceLabel,
+          faceConf,
+          faceSkipped,
+          audioLabel,
+          audioConf,
+          audioSkipped,
+          textSkipped: 'true',
+        },
+      });
+    }
+  }, []);
+
   const handleBack = () => {
-    if (step === 'prompt-select') router.back();
+    if (step === 'prompt-select') {
+      if (evaluationId !== null) {
+        cancelEvaluation(evaluationId).catch(() => {});
+      }
+      router.back();
+    }
     else if (step === 'writing')  setStep('prompt-select');
     else if (step === 'result')   setStep('writing');
     // no back from analyzing — let it complete
@@ -426,8 +471,10 @@ export default function TextSurveyScreen() {
         evaluationId: String(evaluationId),
         faceLabel,
         faceConf,
+        faceSkipped,
         audioLabel,
         audioConf,
+        audioSkipped,
         textLabel: result?.label ?? 'Neutral',
         textConf:  String(Math.round(
           (result?.scores ? Math.max(...Object.values(result.scores)) : 0) * 100
@@ -464,6 +511,21 @@ export default function TextSurveyScreen() {
         <ResultScreen
           result={result}
           onFinish={handleFinish}
+          onSkip={() =>
+            router.replace({
+              pathname: '/survey-results' as any,
+              params: {
+                evaluationId: String(evaluationId),
+                faceLabel,
+                faceConf,
+                faceSkipped,
+                audioLabel,
+                audioConf,
+                audioSkipped,
+                textSkipped: 'true',
+              },
+            })
+          }
           onRewrite={handleRewrite}
         />
       )}

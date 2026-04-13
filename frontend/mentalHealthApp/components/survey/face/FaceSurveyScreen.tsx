@@ -16,9 +16,17 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import {
   analyzeFaceImage,
+  cancelEvaluation,
+  fetchCurrentUser,
   endEvaluation,
   startEvaluation,
+  type UserPreferences,
 } from '@/services/apiService';
+import {
+  DEFAULT_EVALUATION_PREFERENCES,
+  getNextModality,
+  hasAnyEnabledModality,
+} from '@/services/evaluationFlow';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG           = '#1E1830';
@@ -296,10 +304,12 @@ function ResultScreen({
   result,
   onContinue,
   onRescan,
+  onSkip,
 }: {
   result: EmotionResult | null;
   onContinue: () => void;
   onRescan: () => void;
+  onSkip: () => void;
 }) {
   const rawEmotion = result?.emotion ?? 'Unknown';
   const emotion    = EMOTION_DISPLAY[rawEmotion] ?? rawEmotion.toLowerCase();
@@ -335,6 +345,9 @@ function ResultScreen({
         <TouchableOpacity style={styles.ctaButton} onPress={onContinue} activeOpacity={0.85}>
           <Text style={styles.ctaButtonText}>{"Let's Check Your Voice"}</Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={{ marginTop: 14 }}>
+          <Text style={styles.rescanText}>Skip this step</Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={onRescan} activeOpacity={0.7} style={{ marginTop: 14 }}>
           <Text style={styles.rescanText}>Re-scan</Text>
         </TouchableOpacity>
@@ -351,18 +364,103 @@ export default function FaceSurveyScreen() {
   const [result,        setResult]        = useState<EmotionResult | null>(null);
   const [permission,    requestPermission] = useCameraPermissions();
   const [evaluationId, setEvaluationId] = useState<number | null>(null);
+  const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_EVALUATION_PREFERENCES);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const currentUserId = 1;
+
+  useEffect(() => {
+    let mounted = true;
+    const loadPreferences = async () => {
+      const currentUser = await fetchCurrentUser(currentUserId);
+      if (!mounted) return;
+      if (currentUser?.user?.preferences) {
+        setPreferences(currentUser.user.preferences);
+      }
+      setPreferencesLoaded(true);
+    };
+    loadPreferences();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const ensureEvaluation = async () => {
+    if (evaluationId !== null) return evaluationId;
+    const responseData: { evaluation_id?: number } = await startEvaluation(currentUserId);
+    const nextEvaluationId = responseData?.evaluation_id ?? null;
+    setEvaluationId(nextEvaluationId);
+    return nextEvaluationId;
+  };
+
+  const routeAfterFace = (
+    nextEvaluationId: number | null,
+    routeParams: Record<string, string> = {},
+    nextPreferences = preferences
+  ) => {
+    const nextModality = getNextModality('face', nextPreferences);
+    if (nextModality === 'audio') {
+      router.replace({
+        pathname: '/survey-audio' as any,
+        params: {
+          evaluationId: String(nextEvaluationId),
+          prefFace: String(nextPreferences.eval_face),
+          prefAudio: String(nextPreferences.eval_audio),
+          prefText: String(nextPreferences.eval_text),
+          ...routeParams,
+        },
+      });
+      return;
+    }
+    if (nextModality === 'text') {
+      router.replace({
+        pathname: '/survey-text' as any,
+        params: {
+          evaluationId: String(nextEvaluationId),
+          prefFace: String(nextPreferences.eval_face),
+          prefAudio: String(nextPreferences.eval_audio),
+          prefText: String(nextPreferences.eval_text),
+          ...routeParams,
+        },
+      });
+      return;
+    }
+    router.replace({
+      pathname: '/survey-results' as any,
+      params: {
+        evaluationId: String(nextEvaluationId),
+        prefFace: String(nextPreferences.eval_face),
+        prefAudio: String(nextPreferences.eval_audio),
+        prefText: String(nextPreferences.eval_text),
+        ...routeParams,
+      },
+    });
+  };
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    if (!hasAnyEnabledModality(preferences)) {
+      Alert.alert(
+        'No evaluation steps enabled',
+        'Turn on at least one evaluation preference from your profile to start a check-in.',
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+      return;
+    }
+
+    if (!preferences.eval_face) {
+      ensureEvaluation().then((nextEvaluationId) => {
+        routeAfterFace(nextEvaluationId, { faceSkipped: 'true' }, preferences);
+      });
+    }
+  }, [preferencesLoaded, preferences]);
   
   const handleBack = () => {
     if (step === 'intro'){
+      if (evaluationId !== null) {
+        cancelEvaluation(evaluationId).catch(() => {});
+        setEvaluationId(null);
+      }
       router.back();
-      const closeEvaluation = async () => {
-      const responseData: { evaluationId: number } = await endEvaluation(
-        evaluationId as number
-      );
-      console.log(responseData);
-      };
-      closeEvaluation();
-      setEvaluationId(null);
     }
     else setStep('intro');
   };
@@ -379,15 +477,7 @@ export default function FaceSurveyScreen() {
         return;
       }
     }
-    const setupEvaluation = async () => {
-      const responseData: { evaluation_id: number } = await startEvaluation(1);
-      console.log(responseData);
-      setEvaluationId(responseData.evaluation_id);
-    };
-    console.log(evaluationId);
-    if(evaluationId === null){
-      setupEvaluation();
-    }
+    await ensureEvaluation();
     setStep('countdown');
   };
 
@@ -422,15 +512,12 @@ export default function FaceSurveyScreen() {
         <ResultScreen
           result={result}
           onContinue={() => {
-            router.replace({
-              pathname: '/survey-audio' as any,
-              params: {
-                evaluationId: String(evaluationId),
-                faceLabel: result?.emotion ?? 'Neutral',
-                faceConf:  String(Math.round((result?.confidence ?? 0) * 100)),
-              },
+            routeAfterFace(evaluationId, {
+              faceLabel: result?.emotion ?? 'Neutral',
+              faceConf: String(Math.round((result?.confidence ?? 0) * 100)),
             });
           }}
+          onSkip={() => routeAfterFace(evaluationId, { faceSkipped: 'true' })}
           onRescan={handleRescan}
         />
       )}
