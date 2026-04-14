@@ -286,3 +286,33 @@ export async function cancelEvaluation(evaluationId: number) {
   console.log("[api] cancelEvaluation:success");
   return res.json();
 }
+
+// TODO (auth team): persist token after registration using saveAuth from services/auth
+export async function registerUser(payload: { email: string; password: string; name?: string }) {
+  const res = await fetch(`${API_BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await safeJson(res);
+  if (!res.ok) throw new Error(data?.message ?? 'Registration failed');
+  return data as { token: string; user: { id: number; email: string } };
+}
+
+export async function fetchConsent() {
+  const res = await fetch(`${API_BASE}/users/consent`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error('Failed to fetch consent');
+  return res.json() as Promise<{ consent: { consent_image: boolean; consent_audio: boolean; consent_chat: boolean } }>;
+}
+
+export async function updateConsent(consent: { consent_image: boolean; consent_audio: boolean; consent_chat: boolean }) {
+  const res = await fetch(`${API_BASE}/users/consent`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(consent),
+  });
+  if (!res.ok) throw new Error('Failed to update consent');
+  return res.json();
+}
