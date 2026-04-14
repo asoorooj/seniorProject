@@ -64,9 +64,8 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   manage: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.primary,
+    fontSize: 12,
+    color: colors.accentDark,
   },
   row: {
     flexDirection: 'row',

@@ -14,6 +14,7 @@ import { ProfileCard } from '@/components/profile/ProfileCard';
 import { AvgWellbeingCard } from '@/components/profile/AvgWellbeingCard';
 import { EmotionalProfileCard, EmotionTag } from '@/components/profile/EmotionalProfileCard';
 import { StoragePermissionsCard } from '@/components/profile/StoragePermissionsCard';
+import { ConsentPermissionsCard } from '@/components/profile/ConsentPermissionsCard';
 import { AccountCard } from '@/components/profile/AccountCard';
 import { DayScore } from '@/components/home/WeeklyChart';
 import { colors } from '@/assets/styles/colors';
@@ -206,6 +207,7 @@ export default function ProfileScreen() {
           <EmotionalProfileCard emotions={emotions} />
 
           <Text style={sectionLabel}>Data & Privacy</Text>
+          <ConsentPermissionsCard />
           <StoragePermissionsCard
             preferences={preferences}
             saving={savingPreferences}
