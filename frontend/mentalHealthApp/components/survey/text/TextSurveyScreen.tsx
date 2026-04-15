@@ -108,9 +108,11 @@ function StepTabs() {
 function PromptSelectScreen({
   prompts,
   onSelect,
+  onSkip,
 }: {
   prompts: string[];
   onSelect: (prompt: string) => void;
+  onSkip: () => void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -123,7 +125,7 @@ function PromptSelectScreen({
     <FadeInView>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingBottom: 24, display:'flex', justifyContent:'center', alignItems:'center'}}
       >
         <View style={styles.textZone}>
           <Text style={styles.title}>{"Let's Read Your Words"}</Text>
@@ -155,6 +157,9 @@ function PromptSelectScreen({
           <Text style={[styles.promptText, styles.promptTextMuted, selected === '' && styles.promptTextSelected]}>
             or just write freely
           </Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={{ marginTop: 14 }}>
+          <Text style={styles.rewriteText}>Skip this step</Text>
         </TouchableOpacity>
       </ScrollView>
     </FadeInView>
@@ -313,13 +318,11 @@ function AnalyzingScreen({
 function ResultScreen({
   result,
   onFinish,
-  onRewrite,
-  onSkip,
+  onRewrite
 }: {
   result: EmotionResult | null;
   onFinish: () => void;
   onRewrite: () => void;
-  onSkip: () => void;
 }) {
   const checkScale = useRef(new Animated.Value(0)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
@@ -373,9 +376,6 @@ function ResultScreen({
           >
             <Text style={styles.ctaButtonText}>See Full Results</Text>
           </LinearGradient>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={{ marginTop: 14 }}>
-          <Text style={styles.rewriteText}>Skip this step</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={onRewrite} activeOpacity={0.7} style={{ marginTop: 14 }}>
           <Text style={styles.rewriteText}>Re-write</Text>
@@ -495,7 +495,23 @@ export default function TextSurveyScreen() {
       <StepTabs />
 
       {step === 'prompt-select' && (
-        <PromptSelectScreen prompts={prompts} onSelect={handlePromptSelect} />
+        <PromptSelectScreen prompts={prompts} onSelect={handlePromptSelect}           
+          onSkip={() =>
+              router.replace({
+                pathname: '/survey-results' as any,
+                params: {
+                  evaluationId: String(evaluationId),
+                  faceLabel,
+                  faceConf,
+                  faceSkipped,
+                  audioLabel,
+                  audioConf,
+                  audioSkipped,
+                  textSkipped: 'true',
+                },
+              })
+            }
+          />
       )}
       {step === 'writing' && (
         <WritingScreen prompt={prompt} onSubmit={handleSubmit} />
@@ -511,21 +527,6 @@ export default function TextSurveyScreen() {
         <ResultScreen
           result={result}
           onFinish={handleFinish}
-          onSkip={() =>
-            router.replace({
-              pathname: '/survey-results' as any,
-              params: {
-                evaluationId: String(evaluationId),
-                faceLabel,
-                faceConf,
-                faceSkipped,
-                audioLabel,
-                audioConf,
-                audioSkipped,
-                textSkipped: 'true',
-              },
-            })
-          }
           onRewrite={handleRewrite}
         />
       )}

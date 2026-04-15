@@ -16,6 +16,7 @@ import { Feather } from '@expo/vector-icons';
 // TODO (auth team): import saveAuth from '@/services/auth' and call saveAuth(data.token, data.user.id, data.user.email) after successful registration to persist the auth token
 import { switchUserAndSync } from '@/services/sync/syncController';
 import { setCurrentUserId } from '@/services/db';
+import { TEST_USER } from '../userTest';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -59,7 +60,7 @@ export default function RegisterScreen() {
     setLoading(true);
     try {
       // TEMP: mock response for testing without backend — remove when backend is running
-      const data = { token: 'mock-token', user: { id: 1, email: email.trim().toLowerCase() } };
+      const data = { token: 'mock-token', user: { id: TEST_USER.userId, email: email.trim().toLowerCase() } };
       // const data = await registerUser({ email: email.trim().toLowerCase(), password, name: fullName.trim() || undefined });
       // TODO (auth team): call saveAuth(data.token, data.user.id, data.user.email) here to persist the session
       setCurrentUserId(data.user.id);

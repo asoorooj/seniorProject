@@ -34,6 +34,7 @@ import {
   clearLocalData,
   syncProfileCaches,
 } from '@/services/sync/syncController';
+import { TEST_USER } from '@/components/userTest';
 
 // Derive isToday from the current day of the week (0=Sun, 1=Mon, ..., 6=Sat)
 const DAYS: DayScore['day'][] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -75,7 +76,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   eval_text: true,
 };
 
-const CURRENT_USER_ID = 1;
+const CURRENT_USER_ID = TEST_USER.userId;
 
 export default function ProfileScreen() {
   const [user, setUser] = useState<UserProfile>(PLACEHOLDER_USER);

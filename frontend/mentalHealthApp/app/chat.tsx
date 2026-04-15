@@ -190,7 +190,7 @@ export default function ChatScreen() {
 
       // Append bot reply directly from API response so UI updates immediately.
       const responseMessage = latest?.response_message;
-      console.log(latest,"LATEEDT")
+      console.log("Response Message",latest)
       if (responseMessage) {
         const botMessage = new Message({
           id: responseMessage.id ?? responseMessage.server_id,

@@ -1,3 +1,4 @@
+import { TEST_USER } from "@/components/userTest";
 import * as SQLite from "expo-sqlite";
 import type { SQLiteDatabase } from "expo-sqlite";
 import type { SQLiteRunResult } from "expo-sqlite";
@@ -15,7 +16,7 @@ export type SQLResultSetLike = {
 
 let db: SQLiteDatabase | null = null;
 let initPromise: Promise<void> | null = null;
-let currentUserId = 1;
+let currentUserId = TEST_USER.userId;
 
 function getDb() {
   if (!db) {

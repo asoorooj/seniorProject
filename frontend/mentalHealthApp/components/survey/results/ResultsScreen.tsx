@@ -134,7 +134,7 @@ export default function ResultsScreen() {
   const textConf     = Number(params.textConf  ?? 0);
   const textSkipped  = params.textSkipped === 'true';
 
-  const [fusionModelData, setFusionModelData] = useState< {evaluation_id:number; label:string; status:string; suggestion:string; scores:string;} | null>(null);
+  const [fusionModelData, setFusionModelData] = useState< {evaluation_id:number; label:string; status:string; suggestion:string; scores:string; error?:string} | null>(null);
   const [loading,     setLoading]     = useState(true);
 
   const heroOpacity  = useRef(new Animated.Value(0)).current;
@@ -150,6 +150,7 @@ export default function ResultsScreen() {
         : null;
       setFusionModelData(data);
       setLoading(false);
+      
 
       Animated.parallel([
         Animated.timing(heroOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
@@ -160,7 +161,7 @@ export default function ResultsScreen() {
     run();
   }, []);
 
-  const moodPhrase = FUSION_PHRASE[fusionModelData?.label ?? 'Neutral'] ?? 'Mostly Calm';
+  const moodPhrase = fusionModelData?.label ? FUSION_PHRASE[fusionModelData?.label] : 'No Data';
   const completedModalities = [
     !faceSkipped && (faceConf > 0 || params.faceLabel) ? {
       icon: "camera" as const,
@@ -264,7 +265,7 @@ export default function ResultsScreen() {
 
       {/* CTA */}
       <Animated.View style={[styles.ctaWrap, { opacity: btnOpacity }]}>
-        <TouchableOpacity
+        {!fusionModelData?.error && <TouchableOpacity
           style={styles.ctaButton}
           onPress={() => router.replace('/(tabs)/journal')}
           activeOpacity={0.85}
@@ -277,7 +278,7 @@ export default function ResultsScreen() {
           >
             <Text style={styles.ctaText}>Save to My Journal</Text>
           </LinearGradient>
-        </TouchableOpacity>
+        </TouchableOpacity> }
       </Animated.View>
     </SafeAreaView>
   );

@@ -1,0 +1,1 @@
+export const TEST_USER = {userId: 1}

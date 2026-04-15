@@ -27,6 +27,7 @@ import {
   getNextModality,
   hasAnyEnabledModality,
 } from '@/services/evaluationFlow';
+import { TEST_USER } from '@/components/userTest';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG           = '#1E1830';
@@ -128,7 +129,7 @@ function CircleFrame({ children, size }: { children?: React.ReactNode; size: num
 }
 
 // ─── Screen 1: Intro ──────────────────────────────────────────────────────────
-function IntroScreen({ onBegin }: { onBegin: () => void }) {
+function IntroScreen({ onBegin, onSkip }: { onBegin: () => void; onSkip: () => void; }) {
   const pulseScale   = useRef(new Animated.Value(1)).current;
   const pulseOpacity = useRef(new Animated.Value(0.5)).current;
 
@@ -171,6 +172,9 @@ function IntroScreen({ onBegin }: { onBegin: () => void }) {
             </CircleFrame>
           </TouchableOpacity>
         </View>
+        <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={{ marginTop: 40 }}>
+          <Text style={styles.rescanText}>Skip this step</Text>
+        </TouchableOpacity>
       </View>
     </FadeInView>
   );
@@ -304,12 +308,10 @@ function ResultScreen({
   result,
   onContinue,
   onRescan,
-  onSkip,
 }: {
   result: EmotionResult | null;
   onContinue: () => void;
   onRescan: () => void;
-  onSkip: () => void;
 }) {
   const rawEmotion = result?.emotion ?? 'Unknown';
   const emotion    = EMOTION_DISPLAY[rawEmotion] ?? rawEmotion.toLowerCase();
@@ -345,9 +347,6 @@ function ResultScreen({
         <TouchableOpacity style={styles.ctaButton} onPress={onContinue} activeOpacity={0.85}>
           <Text style={styles.ctaButtonText}>{"Let's Check Your Voice"}</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={{ marginTop: 14 }}>
-          <Text style={styles.rescanText}>Skip this step</Text>
-        </TouchableOpacity>
         <TouchableOpacity onPress={onRescan} activeOpacity={0.7} style={{ marginTop: 14 }}>
           <Text style={styles.rescanText}>Re-scan</Text>
         </TouchableOpacity>
@@ -366,7 +365,7 @@ export default function FaceSurveyScreen() {
   const [evaluationId, setEvaluationId] = useState<number | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_EVALUATION_PREFERENCES);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
-  const currentUserId = 1;
+  const currentUserId = TEST_USER.userId;
 
   useEffect(() => {
     let mounted = true;
@@ -497,7 +496,7 @@ export default function FaceSurveyScreen() {
       <SurveyHeader onBack={handleBack} />
       <StepTabs />
 
-      {step === 'intro'     && <IntroScreen    onBegin={handleBegin} />}
+      {step === 'intro'     && <IntroScreen    onBegin={handleBegin} onSkip={() => routeAfterFace(evaluationId, { faceSkipped: 'true' })} />}
       {step === 'countdown' && <CountdownScreen onCapture={handleCapture} />}
       {step === 'loading'   && (
         <LoadingScreen
@@ -517,7 +516,6 @@ export default function FaceSurveyScreen() {
               faceConf: String(Math.round((result?.confidence ?? 0) * 100)),
             });
           }}
-          onSkip={() => routeAfterFace(evaluationId, { faceSkipped: 'true' })}
           onRescan={handleRescan}
         />
       )}

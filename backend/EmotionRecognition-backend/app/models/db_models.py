@@ -12,9 +12,9 @@ class User(db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
 
     # CONSENT
-    consent_chat = db.Column(db.Boolean, default=False, nullable=False)
-    consent_image = db.Column(db.Boolean, default=False, nullable=False)
-    consent_audio = db.Column(db.Boolean, default=False, nullable=False)
+    # consent_chat = db.Column(db.Boolean, default=False, nullable=False)
+    # consent_image = db.Column(db.Boolean, default=False, nullable=False)
+    # consent_audio = db.Column(db.Boolean, default=False, nullable=False)
     consent_timestamp = db.Column(db.DateTime, nullable=True)
 
     # EVALUATION PREFERENCES
@@ -40,7 +40,6 @@ class Session(db.Model):
     last_seen_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)
 
     messages = db.relationship("Message", backref="session", cascade="all, delete-orphan")
-    extractions = db.relationship("Extraction", backref="session", cascade="all, delete-orphan")
     predictions = db.relationship("Prediction", backref="session", cascade="all, delete-orphan")
 
 
@@ -52,16 +51,6 @@ class Message(db.Model):
     textMessage = db.Column(db.Text, nullable=False)
     emotion_label = db.Column(db.String(32), nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-
-    
-
-class Extraction(db.Model):
-    __tablename__ = "extractions"
-    id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.Integer, db.ForeignKey("sessions.id"), nullable=False)
-    json_data = db.Column(db.JSON, nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-
 
 class Prediction(db.Model):
     __tablename__ = "predictions"

@@ -7,6 +7,7 @@ import {
 } from '@/services/repositories/journalRepository';
 import { syncJournalWeek } from '@/services/sync/syncController';
 import { fetchEvaluationsByDate } from '@/services/apiService';
+import { TEST_USER } from '@/components/userTest';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -248,23 +249,23 @@ export function useJournalData() {
                 rawEntries = loadedWeeksRef.current[weekKey];
             } else {
                 let localWeekEntries = await getEntriesForRange({ start, end });
-                if (localWeekEntries.length > 0) {
-                    rawEntries = localWeekEntries;
-                } else if (noDataWeeksRef.current[weekKey]) {
-                    rawEntries = [];
-                } else if (isWeekInCache(weekStart)) {
-                    localWeekEntries = await getEntriesForRange({ start, end });
-                    if (localWeekEntries.length === 0) {
-                        // For cached weeks, we don't fetch from API; mark empty and move on.
-                        noDataWeeksRef.current[weekKey] = true;
-                        console.log("[journal] week_cached_empty", { weekKey });
-                        rawEntries = [];
-                    } else {
-                        rawEntries = localWeekEntries;
-                    }
-                } else {
+                // if (localWeekEntries.length > 0) { //LOCAL DB NOT WORKING RN USING SERVER DB
+                //     rawEntries = localWeekEntries;
+                // } else if (noDataWeeksRef.current[weekKey]) {
+                //     rawEntries = [];
+                // } else if (isWeekInCache(weekStart)) {
+                //     localWeekEntries = await getEntriesForRange({ start, end });
+                //     if (localWeekEntries.length === 0) {
+                //         // For cached weeks, we don't fetch from API; mark empty and move on.
+                //         noDataWeeksRef.current[weekKey] = true;
+                //         console.log("[journal] week_cached_empty", { weekKey });
+                //         rawEntries = [];
+                //     } else {
+                //         rawEntries = localWeekEntries;
+                //     }
+                // } else {
                     const data = await fetchEvaluationsByDate({
-                        userId: 1,
+                        userId: TEST_USER.userId,
                         startDate: weekStartDateString(weekStart),
                     });
                     if (data && Array.isArray(data.evaluations)) {
@@ -282,7 +283,7 @@ export function useJournalData() {
                         console.warn("[journal] week_fetch_failed", { weekKey });
                         rawEntries = [];
                     }
-                }
+                // }
             }
 
             if (cancelled) return;

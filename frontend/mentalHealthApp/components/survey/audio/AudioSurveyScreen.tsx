@@ -173,7 +173,7 @@ function WaveformBars({ active }: { active: boolean }) {
 }
 
 // ─── Screen 1: Intro ──────────────────────────────────────────────────────────
-function IntroScreen({ onBegin }: { onBegin: () => void }) {
+function IntroScreen({ onBegin, onSkip }: { onBegin: () => void; onSkip: () => void; }) {
   const pulseScale   = useRef(new Animated.Value(1)).current;
   const pulseOpacity = useRef(new Animated.Value(0.45)).current;
 
@@ -221,6 +221,9 @@ function IntroScreen({ onBegin }: { onBegin: () => void }) {
             </CircleFrame>
           </TouchableOpacity>
         </View>
+        <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={{ marginTop: 40 }}>
+          <Text style={styles.rerecordText}>Skip this step</Text>
+        </TouchableOpacity>
       </View>
     </FadeInView>
   );
@@ -361,12 +364,10 @@ function ResultScreen({
   result,
   onContinue,
   onRerecord,
-  onSkip,
 }: {
   result: EmotionResult | null;
   onContinue: () => void;
-  onRerecord: () => void;
-  onSkip: () => void;
+  onRerecord: () => void;  
 }) {
   const rawEmotion = result?.emotion ?? 'Unknown';
   const emotion    = EMOTION_DISPLAY[rawEmotion] ?? rawEmotion.toLowerCase();
@@ -403,9 +404,6 @@ function ResultScreen({
       <View style={styles.resultActions}>
         <TouchableOpacity style={styles.ctaButton} onPress={onContinue} activeOpacity={0.85}>
           <Text style={styles.ctaButtonText}>{"On to Your Words"}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={{ marginTop: 14 }}>
-          <Text style={styles.rerecordText}>Skip this step</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={onRerecord} activeOpacity={0.7} style={{ marginTop: 14 }}>
           <Text style={styles.rerecordText}>Re-record</Text>
@@ -519,7 +517,7 @@ export default function AudioSurveyScreen() {
       <SurveyHeader onBack={handleBack} />
       <StepTabs />
 
-      {step === 'intro'     && <IntroScreen    onBegin={handleBegin} />}
+      {step === 'intro'     && <IntroScreen    onBegin={handleBegin} onSkip={() => routeAfterAudio({ audioSkipped: 'true' })}/>}
       {step === 'recording' && <RecordingScreen onStop={handleStop} />}
       {step === 'loading'   && (
         <LoadingScreen
@@ -536,8 +534,7 @@ export default function AudioSurveyScreen() {
               audioLabel: result?.emotion ?? 'Neutral',
               audioConf: String(Math.round((result?.confidence ?? 0) * 100)),
             })
-          }
-          onSkip={() => routeAfterAudio({ audioSkipped: 'true' })}
+          }          
           onRerecord={handleRerecord}
         />
       )}

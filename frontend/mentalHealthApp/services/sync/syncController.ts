@@ -287,7 +287,7 @@ export async function syncAll(reason: "startup" | "manual" = "manual") {
     await syncOutbox(userId);
     await syncMessages(userId);
     await syncJournalWeek(new Date(), userId);
-    await syncProfileCaches(userId);
+    // await syncProfileCaches(userId);
     await setSyncState(userId, { last_sync_at: new Date().toISOString() });
     syncRetryAttempts = 0;
     console.log("[sync] all:success", { reason });
