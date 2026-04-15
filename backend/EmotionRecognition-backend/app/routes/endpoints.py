@@ -3,10 +3,12 @@ import os
 import requests
 import time
 from datetime import datetime, timedelta, timezone
+import calendar
 from flask import Blueprint, jsonify, request
 from app.middleware.auth import auth_required
 from flask import g
-
+import jwt
+from werkzeug.security import generate_password_hash
 from app.extensions import db
 from app.models.db_models import (
     AudioEvalutations,
@@ -39,6 +41,7 @@ from google import genai
 api_bp = Blueprint("api", __name__)
 
 CLOUDCONVERT_API_KEY = os.getenv("CLOUD_CONVERT_KEY")
+TEST_USER = {"user_id":1}
 
 def _parse_iso_dt(value, field_name):
     if value is None:
@@ -59,12 +62,12 @@ def _user_to_dict(user):
     return {
         "id": user.id,
         "external_id": user.external_id,
-        "created_at": user.created_at.isoformat() if user.created_at else None,
-        "email": user.email,
-        "consent_chat": user.consent_chat,
-        "consent_image": user.consent_image,
-        "consent_audio": user.consent_audio,
-        "consent_timestamp": user.consent_timestamp.isoformat() if user.consent_timestamp else None,
+        "created_at": user.created_at.isoformat(),
+        "preferences": {
+            "eval_face": user.pref_eval_face,
+            "eval_audio": user.pref_eval_audio,
+            "eval_text": user.pref_eval_text,
+        },
     }
 
 def _parse_js_date(value):
@@ -169,6 +172,39 @@ def update_user(user_id):
     return jsonify(user=_user_to_dict(user)), 200
 
 
+@api_bp.put("/users/<int:user_id>/preferences")
+def update_user_preferences(user_id):
+    payload = request.get_json(silent=True) or {}
+    user = User.query.get(user_id)
+    if not user:
+        return _json_error("User not found", 404)
+
+    allowed_fields = {
+        "eval_face": "pref_eval_face",
+        "eval_audio": "pref_eval_audio",
+        "eval_text": "pref_eval_text",
+    }
+
+    updated = False
+    for field, attr_name in allowed_fields.items():
+        if field in payload:
+            setattr(user, attr_name, bool(payload[field]))
+            updated = True
+
+    if not updated:
+        return _json_error("no valid fields provided")
+
+    db.session.commit()
+    return jsonify(
+        message="preferences updated",
+        preferences={
+            "eval_face": user.pref_eval_face,
+            "eval_audio": user.pref_eval_audio,
+            "eval_text": user.pref_eval_text,
+        },
+    ), 200
+
+
 @api_bp.delete("/users/<int:user_id>")
 def delete_user(user_id):
     user = User.query.get(user_id)
@@ -181,89 +217,195 @@ def delete_user(user_id):
 
 @api_bp.get("/evaluation/by-date")
 def test_get_evaluations_by_date():
-    user_id = request.args.get("user_id", type=int)
-    start_date_raw = request.args.get("start_date")
-    if not user_id:
-        return jsonify(error="user_id is required"), 400
-    if not start_date_raw:
-        return jsonify(error="start_date is required"), 400
+    try:
+        user_id = request.args.get("user_id", type=int)
+        start_date_raw = request.args.get("start_date")
+        if not user_id:
+            return jsonify(error="user_id is required"), 400
+        if not start_date_raw:
+            return jsonify(error="start_date is required"), 400
 
-    start_dt = _parse_mmddyyyy_date(start_date_raw)
-    if not start_dt:
-        start_dt = _parse_js_date(start_date_raw)
-    if not start_dt:
-        return jsonify(error="start_date format is invalid (use MM/dd/yyyy)"), 400
+        start_dt = _parse_mmddyyyy_date(start_date_raw)
+        if not start_dt:
+            start_dt = _parse_js_date(start_date_raw)
+        if not start_dt:
+            return jsonify(error="start_date format is invalid (use MM/dd/yyyy)"), 400
 
-    start_utc = start_dt.astimezone(timezone.utc)
-    end_utc = start_utc + timedelta(days=7)
+        start_utc = start_dt.astimezone(timezone.utc)
+        end_utc = start_utc + timedelta(days=7)
 
-    evaluations = (
-        Evaluation.query.filter_by(user_id=user_id)
-        .filter(Evaluation.timestamp >= start_utc)
-        .filter(Evaluation.timestamp < end_utc)
-        .order_by(Evaluation.id.desc())
-        .all()
-    )
-    if not evaluations:
-        return jsonify(evaluations=[]), 200
+        evaluations = (
+            Evaluation.query.filter_by(user_id=user_id)
+            .filter(Evaluation.timestamp >= start_utc)
+            .filter(Evaluation.timestamp < end_utc)
+            .order_by(Evaluation.id.desc())
+            .all()
+        )
+        if not evaluations:
+            return jsonify(evaluations=[]), 200
 
-    evaluation_ids = [e.id for e in evaluations]
+        evaluation_ids = [e.id for e in evaluations]
 
-    audio_rows = (
-        AudioEvalutations.query.filter(
+        audio_rows = (
+            AudioEvalutations.query.filter(
+                AudioEvalutations.evaluation_id.in_(evaluation_ids)
+            ).all()
+        )
+        image_rows = (
+            ImageEvalutations.query.filter(
+                ImageEvalutations.evaluation_id.in_(evaluation_ids)
+            ).all()
+        )
+        text_rows = (
+            TextEvalutations.query.filter(
+                TextEvalutations.evaluation_id.in_(evaluation_ids)
+            ).all()
+        )
+
+        audio_by_eval = {}
+        for a in audio_rows:
+            audio_by_eval.setdefault(
+                a.evaluation_id,
+                {
+                    "id": a.id,
+                    "evaluation_id": a.evaluation_id,
+                    "scores": a.scores,
+                    "label": a.label,
+                },
+            )
+
+        image_by_eval = {}
+        for i in image_rows:
+            image_by_eval.setdefault(
+                i.evaluation_id,
+                {
+                    "id": i.id,
+                    "evaluation_id": i.evaluation_id,
+                    "scores": i.scores,
+                    "label": i.label,
+                },
+            )
+
+        text_by_eval = {}
+        for t in text_rows:
+            text_by_eval.setdefault(
+                t.evaluation_id,
+                {
+                    "id": t.id,
+                    "evaluation_id": t.evaluation_id,
+                    "scores": t.scores,
+                    "label": t.label,
+                },
+            )
+
+        payload = []
+        for e in evaluations:
+            payload.append(
+                {
+                    "evaluation": {
+                        "id": e.id,
+                        "user_id": e.user_id,
+                        "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+                        "scores": e.scores,
+                        "label": e.label,
+                        "suggestion": e.suggestion,
+                    },
+                    "audio": audio_by_eval.get(e.id),
+                    "image": image_by_eval.get(e.id),
+                    "text": text_by_eval.get(e.id),
+                }
+            )
+
+        return jsonify(evaluations=payload), 200
+    except Exception as e:
+        print(e)
+        return jsonify({"error": "there was an error"}), 500
+    
+@api_bp.get("/evaluation/by-month")
+def get_evaluations_by_month():
+    try:
+        user_id = request.args.get("user_id", type=int)
+        month = request.args.get("month", type=int)  # 0-11
+
+        if user_id is None:
+            return jsonify(error="user_id is required"), 400
+
+        if month is None or month < 0 or month > 11:
+            return jsonify(error="month must be between 0 and 11"), 400
+
+        # Assume current year (you can extend later)
+        year = datetime.now().year
+
+        # Convert JS-style month (0-11) → Python (1-12)
+        month_num = month + 1
+
+        # Get first and last day of month
+        start_date = datetime(year, month_num, 1, tzinfo=timezone.utc)
+
+        last_day = calendar.monthrange(year, month_num)[1]
+        end_date = datetime(year, month_num, last_day, 23, 59, 59, tzinfo=timezone.utc)
+
+        # Query evaluations in range
+        evaluations = (
+            Evaluation.query
+            .filter_by(user_id=user_id)
+            .filter(Evaluation.timestamp >= start_date)
+            .filter(Evaluation.timestamp <= end_date)
+            .order_by(Evaluation.id.desc())
+            .all()
+        )
+
+        if not evaluations:
+            return jsonify(evaluations=[]), 200
+
+        evaluation_ids = [e.id for e in evaluations]
+
+        # Fetch related rows
+        audio_rows = AudioEvalutations.query.filter(
             AudioEvalutations.evaluation_id.in_(evaluation_ids)
         ).all()
-    )
-    image_rows = (
-        ImageEvalutations.query.filter(
+
+        image_rows = ImageEvalutations.query.filter(
             ImageEvalutations.evaluation_id.in_(evaluation_ids)
         ).all()
-    )
-    text_rows = (
-        TextEvalutations.query.filter(
+
+        text_rows = TextEvalutations.query.filter(
             TextEvalutations.evaluation_id.in_(evaluation_ids)
         ).all()
-    )
 
-    audio_by_eval = {}
-    for a in audio_rows:
-        audio_by_eval.setdefault(
-            a.evaluation_id,
-            {
+        # Map by evaluation_id
+        audio_by_eval = {
+            a.evaluation_id: {
                 "id": a.id,
                 "evaluation_id": a.evaluation_id,
                 "scores": a.scores,
                 "label": a.label,
-            },
-        )
+            }
+            for a in audio_rows
+        }
 
-    image_by_eval = {}
-    for i in image_rows:
-        image_by_eval.setdefault(
-            i.evaluation_id,
-            {
+        image_by_eval = {
+            i.evaluation_id: {
                 "id": i.id,
                 "evaluation_id": i.evaluation_id,
                 "scores": i.scores,
                 "label": i.label,
-            },
-        )
+            }
+            for i in image_rows
+        }
 
-    text_by_eval = {}
-    for t in text_rows:
-        text_by_eval.setdefault(
-            t.evaluation_id,
-            {
+        text_by_eval = {
+            t.evaluation_id: {
                 "id": t.id,
                 "evaluation_id": t.evaluation_id,
                 "scores": t.scores,
                 "label": t.label,
-            },
-        )
+            }
+            for t in text_rows
+        }
 
-    payload = []
-    for e in evaluations:
-        payload.append(
+        # Build response
+        payload = [
             {
                 "evaluation": {
                     "id": e.id,
@@ -277,13 +419,19 @@ def test_get_evaluations_by_date():
                 "image": image_by_eval.get(e.id),
                 "text": text_by_eval.get(e.id),
             }
-        )
+            for e in evaluations
+        ]
 
-    return jsonify(evaluations=payload), 200
+        return jsonify(evaluations=payload), 200
+
+    except Exception as e:
+        print(e)
+        return jsonify(error="there was an error"), 500
 
 @api_bp.post("/recieve_eval_data")
 def recieve_eval():
-    user_id = 1
+    user_id = TEST_USER["user_id"]
+
     try:
         audio_file_suffix = ".wav"
 
@@ -798,6 +946,25 @@ def end_evaluation():
         "label": fusion_label,
         "scores": fusion_scores,
         "suggestion": suggestion,
+    }), 200
+
+
+@api_bp.delete("/evaluation/<int:evaluation_id>")
+def cancel_evaluation(evaluation_id):
+    evaluation = Evaluation.query.get(evaluation_id)
+    if not evaluation:
+        return jsonify({"error": "evaluation not found"}), 404
+
+    try:
+        db.session.delete(evaluation)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": "failed to delete evaluation"}), 500
+
+    return jsonify({
+        "status": "deleted",
+        "evaluation_id": evaluation_id,
     }), 200
 
 @api_bp.post("/chat")

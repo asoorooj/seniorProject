@@ -14,11 +14,17 @@ import { ProfileCard } from '@/components/profile/ProfileCard';
 import { AvgWellbeingCard } from '@/components/profile/AvgWellbeingCard';
 import { EmotionalProfileCard, EmotionTag } from '@/components/profile/EmotionalProfileCard';
 import { StoragePermissionsCard } from '@/components/profile/StoragePermissionsCard';
+import { ConsentPermissionsCard } from '@/components/profile/ConsentPermissionsCard';
 import { AccountCard } from '@/components/profile/AccountCard';
 import { DayScore } from '@/components/home/WeeklyChart';
 import { colors } from '@/assets/styles/colors';
 import { sectionLabel } from "@/assets/styles/text";
-import { logout } from '@/services/apiService';
+import {
+  fetchCurrentUser,
+  logout,
+  type UserPreferences,
+  updateUserPreferences,
+} from '@/services/apiService';
 import {
   getEmotionsCache,
   getProfileCache,
@@ -63,13 +69,23 @@ type UserProfile = {
   streak: number;
 };
 
+const DEFAULT_PREFERENCES: UserPreferences = {
+  eval_face: true,
+  eval_audio: true,
+  eval_text: true,
+};
+
+const CURRENT_USER_ID = 1;
+
 export default function ProfileScreen() {
   const [user, setUser] = useState<UserProfile>(PLACEHOLDER_USER);
   const [scores, setScores] = useState<DayScore[]>(PLACEHOLDER_SCORES);
   const [emotions, setEmotions] = useState<EmotionTag[]>(PLACEHOLDER_EMOTIONS);
+  const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [savingPreferences, setSavingPreferences] = useState(false);
 
   const fetchData = useCallback(async () => {
     setError(false);
@@ -82,6 +98,11 @@ export default function ProfileScreen() {
       if (cachedProfile) setUser(cachedProfile);
       if (cachedScores) setScores(cachedScores);
       if (cachedEmotions) setEmotions(cachedEmotions);
+
+      const currentUser = await fetchCurrentUser(CURRENT_USER_ID);
+      if (currentUser?.user?.preferences) {
+        setPreferences(currentUser.user.preferences);
+      }
 
       const synced = await syncProfileCaches();
       if (synced?.profile) setUser(synced.profile);
@@ -103,6 +124,27 @@ export default function ProfileScreen() {
     await fetchData();
     setRefreshing(false);
   }, [fetchData]);
+
+  const handleTogglePreference = useCallback(async (key: keyof UserPreferences) => {
+    const nextPreferences = {
+      ...preferences,
+      [key]: !preferences[key],
+    };
+
+    if (!nextPreferences.eval_face && !nextPreferences.eval_audio && !nextPreferences.eval_text) {
+      return;
+    }
+
+    setPreferences(nextPreferences);
+    setSavingPreferences(true);
+
+    const updated = await updateUserPreferences(CURRENT_USER_ID, nextPreferences);
+    if (!updated?.preferences) {
+      setPreferences(preferences);
+    }
+
+    setSavingPreferences(false);
+  }, [preferences]);
 
   const handleSignOut = useCallback(() => {
     clearLocalData().catch(() => {});
@@ -165,7 +207,12 @@ export default function ProfileScreen() {
           <EmotionalProfileCard emotions={emotions} />
 
           <Text style={sectionLabel}>Data & Privacy</Text>
-          <StoragePermissionsCard />
+          <ConsentPermissionsCard />
+          <StoragePermissionsCard
+            preferences={preferences}
+            saving={savingPreferences}
+            onToggle={handleTogglePreference}
+          />
 
           <Text style={sectionLabel}>Account</Text>
           <AccountCard onSignOut={handleSignOut} />

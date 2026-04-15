@@ -1,5 +1,23 @@
 import { API_BASE } from "@/constants/api";
 
+export type UserPreferences = {
+  eval_face: boolean;
+  eval_audio: boolean;
+  eval_text: boolean;
+};
+
+export type CurrentUser = {
+  id: number;
+  external_id: string;
+  created_at: string;
+  consent?: {
+    consent_chat: boolean;
+    consent_image: boolean;
+    consent_audio: boolean;
+  };
+  preferences?: UserPreferences;
+};
+
 async function safeJson(res: Response) {
   try {
     return await res.json();
@@ -117,6 +135,38 @@ export async function logout() {
   return fetch(`${API_BASE}/api/auth/logout`, { method: "POST" });
 }
 
+export async function fetchCurrentUser(userId: number) {
+  console.log("[api] fetchCurrentUser:start", { userId });
+  const res = await fetch(`${API_BASE}/users/${userId}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    console.warn("[api] fetchCurrentUser:failed", { status: res.status });
+    return null;
+  }
+  console.log("[api] fetchCurrentUser:success");
+  return res.json() as Promise<{ user: CurrentUser }>;
+}
+
+export async function updateUserPreferences(
+  userId: number,
+  preferences: Partial<UserPreferences>
+) {
+  console.log("[api] updateUserPreferences:start", { userId, preferences });
+  const res = await fetch(`${API_BASE}/users/${userId}/preferences`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(preferences),
+  });
+  if (!res.ok) {
+    console.warn("[api] updateUserPreferences:failed", { status: res.status });
+    return null;
+  }
+  console.log("[api] updateUserPreferences:success");
+  return res.json() as Promise<{ preferences: UserPreferences }>;
+}
+
 export async function startEvaluation(userId: number) {
   console.log("[api] startEvaluation:start", { userId });
   const res = await fetch(`${API_BASE}/startevaluation`, {
@@ -221,4 +271,48 @@ export async function analyzeTextEntry(text: string, evaluationId: number) {
       scores: { Happy: 0.68, Sad: 0.2, Fear: 0.12 },
     };
   }
+}
+
+export async function cancelEvaluation(evaluationId: number) {
+  console.log("[api] cancelEvaluation:start", { evaluationId });
+  const res = await fetch(`${API_BASE}/evaluation/${evaluationId}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    console.warn("[api] cancelEvaluation:failed", { status: res.status });
+    return null;
+  }
+  console.log("[api] cancelEvaluation:success");
+  return res.json();
+}
+
+// TODO (auth team): persist token after registration using saveAuth from services/auth
+export async function registerUser(payload: { email: string; password: string; name?: string }) {
+  const res = await fetch(`${API_BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await safeJson(res);
+  if (!res.ok) throw new Error(data?.message ?? 'Registration failed');
+  return data as { token: string; user: { id: number; email: string } };
+}
+
+export async function fetchConsent() {
+  const res = await fetch(`${API_BASE}/users/consent`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error('Failed to fetch consent');
+  return res.json() as Promise<{ consent: { consent_image: boolean; consent_audio: boolean; consent_chat: boolean } }>;
+}
+
+export async function updateConsent(consent: { consent_image: boolean; consent_audio: boolean; consent_chat: boolean }) {
+  const res = await fetch(`${API_BASE}/users/consent`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(consent),
+  });
+  if (!res.ok) throw new Error('Failed to update consent');
+  return res.json();
 }

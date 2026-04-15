@@ -14,7 +14,15 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
 
-import { analyzeAudioClip } from '@/services/apiService';
+import {
+  analyzeAudioClip,
+  cancelEvaluation,
+  type UserPreferences,
+} from '@/services/apiService';
+import {
+  DEFAULT_EVALUATION_PREFERENCES,
+  getNextModality,
+} from '@/services/evaluationFlow';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG           = '#1E1830';
@@ -353,10 +361,12 @@ function ResultScreen({
   result,
   onContinue,
   onRerecord,
+  onSkip,
 }: {
   result: EmotionResult | null;
   onContinue: () => void;
   onRerecord: () => void;
+  onSkip: () => void;
 }) {
   const rawEmotion = result?.emotion ?? 'Unknown';
   const emotion    = EMOTION_DISPLAY[rawEmotion] ?? rawEmotion.toLowerCase();
@@ -394,6 +404,9 @@ function ResultScreen({
         <TouchableOpacity style={styles.ctaButton} onPress={onContinue} activeOpacity={0.85}>
           <Text style={styles.ctaButtonText}>{"On to Your Words"}</Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={{ marginTop: 14 }}>
+          <Text style={styles.rerecordText}>Skip this step</Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={onRerecord} activeOpacity={0.7} style={{ marginTop: 14 }}>
           <Text style={styles.rerecordText}>Re-record</Text>
         </TouchableOpacity>
@@ -409,17 +422,71 @@ export default function AudioSurveyScreen() {
     evaluationId?: string;
     faceLabel?: string;
     faceConf?: string;
+    faceSkipped?: string;
+    prefFace?: string;
+    prefAudio?: string;
+    prefText?: string;
   }>();
   const evaluationId = params.evaluationId ? Number(params.evaluationId) : null;
   const faceLabel    = params.faceLabel ?? 'Neutral';
   const faceConf     = params.faceConf  ?? '0';
+  const faceSkipped  = params.faceSkipped ?? 'false';
+  const preferences: UserPreferences = {
+    eval_face: params.prefFace ? params.prefFace === 'true' : DEFAULT_EVALUATION_PREFERENCES.eval_face,
+    eval_audio: params.prefAudio ? params.prefAudio === 'true' : DEFAULT_EVALUATION_PREFERENCES.eval_audio,
+    eval_text: params.prefText ? params.prefText === 'true' : DEFAULT_EVALUATION_PREFERENCES.eval_text,
+  };
 
   const [step,   setStep]   = useState<AudioStep>('intro');
   const [uri,    setUri]    = useState('');
   const [result, setResult] = useState<EmotionResult | null>(null);
 
+  const routeAfterAudio = (routeParams: Record<string, string> = {}) => {
+    const nextModality = getNextModality('audio', preferences);
+    if (nextModality === 'text') {
+      router.replace({
+        pathname: '/survey-text' as any,
+        params: {
+          evaluationId: String(evaluationId),
+          faceLabel,
+          faceConf,
+          faceSkipped,
+          prefFace: String(preferences.eval_face),
+          prefAudio: String(preferences.eval_audio),
+          prefText: String(preferences.eval_text),
+          ...routeParams,
+        },
+      });
+      return;
+    }
+    router.replace({
+      pathname: '/survey-results' as any,
+      params: {
+        evaluationId: String(evaluationId),
+        faceLabel,
+        faceConf,
+        faceSkipped,
+        prefFace: String(preferences.eval_face),
+        prefAudio: String(preferences.eval_audio),
+        prefText: String(preferences.eval_text),
+        ...routeParams,
+      },
+    });
+  };
+
+  useEffect(() => {
+    if (!preferences.eval_audio) {
+      routeAfterAudio({ audioSkipped: 'true' });
+    }
+  }, []);
+
   const handleBack = () => {
-    if (step === 'intro') router.back();
+    if (step === 'intro') {
+      if (evaluationId !== null) {
+        cancelEvaluation(evaluationId).catch(() => {});
+      }
+      router.back();
+    }
     else setStep('intro');
   };
 
@@ -465,17 +532,12 @@ export default function AudioSurveyScreen() {
         <ResultScreen
           result={result}
           onContinue={() =>
-            router.replace({
-              pathname: '/survey-text' as any,
-              params: {
-                evaluationId: String(evaluationId),
-                faceLabel,
-                faceConf,
-                audioLabel: result?.emotion ?? 'Neutral',
-                audioConf:  String(Math.round((result?.confidence ?? 0) * 100)),
-              },
+            routeAfterAudio({
+              audioLabel: result?.emotion ?? 'Neutral',
+              audioConf: String(Math.round((result?.confidence ?? 0) * 100)),
             })
           }
+          onSkip={() => routeAfterAudio({ audioSkipped: 'true' })}
           onRerecord={handleRerecord}
         />
       )}

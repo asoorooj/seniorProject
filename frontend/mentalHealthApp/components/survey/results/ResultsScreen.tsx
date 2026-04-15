@@ -114,19 +114,25 @@ export default function ResultsScreen() {
     evaluationId?: string;
     faceLabel?: string;
     faceConf?: string;
+    faceSkipped?: string;
     audioLabel?: string;
     audioConf?: string;
+    audioSkipped?: string;
     textLabel?: string;
     textConf?: string;
+    textSkipped?: string;
   }>();
 
   const evaluationId = params.evaluationId ? Number(params.evaluationId) : null;
   const faceLabel    = params.faceLabel  ?? 'Neutral';
   const faceConf     = Number(params.faceConf  ?? 0);
+  const faceSkipped  = params.faceSkipped === 'true';
   const audioLabel   = params.audioLabel ?? 'Neutral';
   const audioConf    = Number(params.audioConf ?? 0);
+  const audioSkipped = params.audioSkipped === 'true';
   const textLabel    = params.textLabel  ?? 'Neutral';
   const textConf     = Number(params.textConf  ?? 0);
+  const textSkipped  = params.textSkipped === 'true';
 
   const [fusionModelData, setFusionModelData] = useState< {evaluation_id:number; label:string; status:string; suggestion:string; scores:string;} | null>(null);
   const [loading,     setLoading]     = useState(true);
@@ -155,6 +161,39 @@ export default function ResultsScreen() {
   }, []);
 
   const moodPhrase = FUSION_PHRASE[fusionModelData?.label ?? 'Neutral'] ?? 'Mostly Calm';
+  const completedModalities = [
+    !faceSkipped && (faceConf > 0 || params.faceLabel) ? {
+      icon: "camera" as const,
+      label: "Your Expression",
+      emotion: faceLabel,
+      conf: faceConf,
+      color: PURPLE,
+      delay: 200,
+    } : null,
+    !audioSkipped && (audioConf > 0 || params.audioLabel) ? {
+      icon: "mic" as const,
+      label: "Your Voice",
+      emotion: audioLabel,
+      conf: audioConf,
+      color: ORANGE,
+      delay: 350,
+    } : null,
+    !textSkipped && (textConf > 0 || params.textLabel) ? {
+      icon: "align-left" as const,
+      label: "Your Words",
+      emotion: textLabel,
+      conf: textConf,
+      color: TEAL,
+      delay: 500,
+    } : null,
+  ].filter(Boolean) as Array<{
+    icon: React.ComponentProps<typeof Feather>['name'];
+    label: string;
+    emotion: string;
+    conf: number;
+    color: string;
+    delay: number;
+  }>;
 
   if (loading) {
     return (
@@ -208,32 +247,19 @@ export default function ResultsScreen() {
 
       {/* Modality rows */}
       <View style={styles.modalitiesCard}>
-        <ModalityRow
-          icon="camera"
-          label="Your Expression"
-          emotion={faceLabel}
-          conf={faceConf}
-          color={PURPLE}
-          delay={200}
-        />
-        <View style={styles.divider} />
-        <ModalityRow
-          icon="mic"
-          label="Your Voice"
-          emotion={audioLabel}
-          conf={audioConf}
-          color={ORANGE}
-          delay={350}
-        />
-        <View style={styles.divider} />
-        <ModalityRow
-          icon="align-left"
-          label="Your Words"
-          emotion={textLabel}
-          conf={textConf}
-          color={TEAL}
-          delay={500}
-        />
+        {completedModalities.map((modality, index) => (
+          <React.Fragment key={modality.label}>
+            {index > 0 && <View style={styles.divider} />}
+            <ModalityRow
+              icon={modality.icon}
+              label={modality.label}
+              emotion={modality.emotion}
+              conf={modality.conf}
+              color={modality.color}
+              delay={modality.delay}
+            />
+          </React.Fragment>
+        ))}
       </View>
 
       {/* CTA */}
