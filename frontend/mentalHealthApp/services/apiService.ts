@@ -1,4 +1,6 @@
+import { TEST_USER } from "@/components/userTest";
 import { API_BASE } from "@/constants/api";
+import { User } from "@/hooks/useAuth";
 
 export type UserPreferences = {
   eval_face: boolean;
@@ -316,3 +318,44 @@ export async function updateConsent(consent: { consent_image: boolean; consent_a
   if (!res.ok) throw new Error('Failed to update consent');
   return res.json();
 }
+
+export async function login(email:string, password:string):Promise<{message:string; session_id:number;user:User}>{
+  const res = await fetch(`${API_BASE}/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+      password,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Login failed");
+  }
+  return data;
+};
+
+// export const getProfile = async () => {
+//   const session_id = TEST_USER.userId;
+
+//   if (!session_id) {
+//     throw new Error("No session found. User not logged in.");
+//   }
+
+//   const res = await fetch(`${API_BASE}/profile`, {
+//     method: "GET",
+//     headers: {
+//       Authorization: session_id,
+//     },
+//   });
+
+//   const data = await res.json();
+
+//   if (!res.ok) {
+//     throw new Error(data.error || "Failed to fetch profile");
+//   }
+
+//   return data;
+// };

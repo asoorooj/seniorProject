@@ -32,76 +32,129 @@ export async function initDb() {
     await database.execAsync(`
       PRAGMA foreign_keys = ON;
 
-      CREATE TABLE IF NOT EXISTS messages (
-        local_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        server_id INTEGER,
+      -- =========================
+      -- USER (matches Flask User)
+      -- =========================
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY,
+        external_id TEXT UNIQUE,
+        email TEXT,
+        created_at TEXT,
+        consent_timestamp TEXT,
+
+        pref_eval_face INTEGER,
+        pref_eval_audio INTEGER,
+        pref_eval_text INTEGER,
+
+        synced INTEGER DEFAULT 0,
+        updated_at TEXT
+      );
+
+      -- =========================
+      -- SESSION (matches Flask Session)
+      -- =========================
+      CREATE TABLE IF NOT EXISTS sessions (
+        id INTEGER PRIMARY KEY,
         user_id INTEGER NOT NULL,
-        session_id INTEGER,
-        is_user INTEGER NOT NULL,
-        text TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
-        status TEXT,
+        started_at TEXT,
+        last_seen_at TEXT,
+
+        synced INTEGER DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_sessions_user_id
+      ON sessions (user_id);
+
+      -- =========================
+      -- MESSAGE (matches Flask Message)
+      -- =========================
+      CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY,
+
+        session_id INTEGER NOT NULL,
+        role TEXT NOT NULL,              -- "user" | "assistant"
+        textMessage TEXT NOT NULL,
         emotion_label TEXT,
+        timestamp TEXT,
+
         synced INTEGER DEFAULT 0,
         deleted_at TEXT,
         updated_at TEXT
       );
-      CREATE INDEX IF NOT EXISTS idx_messages_user_time ON messages (user_id, timestamp);
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_server_id ON messages (server_id);
 
-      CREATE TABLE IF NOT EXISTS journal_entries (
-        local_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        server_id INTEGER,
-        user_id INTEGER NOT NULL,
-        timestamp TEXT NOT NULL,
-        mood TEXT,
-        score INTEGER,
+      CREATE INDEX IF NOT EXISTS idx_messages_session
+      ON messages (session_id);
+
+      -- =========================
+      -- PREDICTION (matches Flask Prediction)
+      -- =========================
+      CREATE TABLE IF NOT EXISTS predictions (
+        id INTEGER PRIMARY KEY,
+
+        session_id INTEGER NOT NULL,
+        modality TEXT NOT NULL,          -- text / face / audio
+        label TEXT NOT NULL,
+        confidence REAL,
+        raw_probs TEXT,                  -- store JSON string
+        timestamp TEXT,
+
+        synced INTEGER DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_predictions_session
+      ON predictions (session_id);
+
+      -- =========================
+      -- EVALUATION (matches Flask Evaluation)
+      -- =========================
+      CREATE TABLE IF NOT EXISTS evaluations (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER,
+
+        timestamp TEXT,
         label TEXT,
-        scores_json TEXT,
-        face_label TEXT,
-        face_scores_json TEXT,
-        voice_label TEXT,
-        voice_scores_json TEXT,
-        text_label TEXT,
-        text_scores_json TEXT,
+        scores TEXT,                     -- JSON string
         suggestion TEXT,
-        journal_text TEXT,
-        tip TEXT,
-        synced INTEGER DEFAULT 1,
-        updated_at TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_journal_user_time ON journal_entries (user_id, timestamp);
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_server_id ON journal_entries (server_id);
 
-      CREATE TABLE IF NOT EXISTS profile_cache (
-        user_id INTEGER PRIMARY KEY,
-        profile_json TEXT,
-        updated_at TEXT
+        synced INTEGER DEFAULT 0
       );
-      CREATE TABLE IF NOT EXISTS scores_cache (
-        user_id INTEGER PRIMARY KEY,
-        week_scores_json TEXT,
-        updated_at TEXT
+
+      CREATE INDEX IF NOT EXISTS idx_evaluations_user
+      ON evaluations (user_id);
+
+      -- =========================
+      -- AUDIO / IMAGE / TEXT EVALUATION
+      -- (flattened local cache version)
+      -- =========================
+
+      CREATE TABLE IF NOT EXISTS audio_evaluations (
+        id INTEGER PRIMARY KEY,
+        evaluation_id INTEGER,
+        label TEXT,
+        scores TEXT,
+        data BLOB,
+
+        synced INTEGER DEFAULT 0
       );
-      CREATE TABLE IF NOT EXISTS emotions_cache (
-        user_id INTEGER PRIMARY KEY,
-        emotions_json TEXT,
-        updated_at TEXT
+
+      CREATE TABLE IF NOT EXISTS image_evaluations (
+        id INTEGER PRIMARY KEY,
+        evaluation_id INTEGER,
+        label TEXT,
+        scores TEXT,
+        data BLOB,
+
+        synced INTEGER DEFAULT 0
       );
-      CREATE TABLE IF NOT EXISTS sync_state (
-        user_id INTEGER PRIMARY KEY,
-        last_sync_at TEXT,
-        messages_cursor TEXT,
-        journal_cursor TEXT
-      );
-      CREATE TABLE IF NOT EXISTS outbox (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        type TEXT NOT NULL,
-        payload_json TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        attempts INTEGER DEFAULT 0,
-        last_error TEXT
+
+      CREATE TABLE IF NOT EXISTS text_evaluations (
+        id INTEGER PRIMARY KEY,
+        evaluation_id INTEGER,
+        label TEXT,
+        scores TEXT,
+        data TEXT,
+
+        synced INTEGER DEFAULT 0
       );
     `);
   })();
@@ -143,16 +196,22 @@ export async function executeSqlAsync(
 
 export async function clearDatabase() {
   await initDb();
+
   const tables = [
+    "users",
+    "sessions",
     "messages",
-    "journal_entries",
-    "profile_cache",
-    "scores_cache",
-    "emotions_cache",
-    "sync_state",
-    "outbox",
+    "predictions",
+    "evaluations",
+    "audio_evaluations",
+    "image_evaluations",
+    "text_evaluations",
   ];
+
   for (const table of tables) {
     await executeSqlAsync(`DELETE FROM ${table};`);
   }
+
+  // optional: reset any in-memory state
+  currentUserId = TEST_USER.userId;
 }

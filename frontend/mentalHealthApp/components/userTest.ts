@@ -1,1 +1,1 @@
-export const TEST_USER = {userId: 1}
+export const TEST_USER = {userId: 1, email:'asoo', password:'password123'}

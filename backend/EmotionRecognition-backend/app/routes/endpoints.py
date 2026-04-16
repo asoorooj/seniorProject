@@ -1,5 +1,6 @@
 import base64
 import os
+import uuid
 import requests
 import time
 from datetime import datetime, timedelta, timezone
@@ -7,8 +8,7 @@ import calendar
 from flask import Blueprint, jsonify, request
 from app.middleware.auth import auth_required
 from flask import g
-import jwt
-from werkzeug.security import generate_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 from app.extensions import db
 from app.models.db_models import (
     AudioEvalutations,
@@ -214,6 +214,119 @@ def delete_user(user_id):
     db.session.delete(user)
     db.session.commit()
     return jsonify(status="deleted"), 200
+
+@api_bp.post("/signup")
+def signup():
+    data = request.get_json()
+
+    email = data.get("email")
+    password = data.get("password")
+
+    if not email or not password:
+        return jsonify({"error": "Email and password required"}), 400
+
+    # Check if user already exists
+    existing_user = User.query.filter_by(email=email).first()
+    if existing_user:
+        return jsonify({"error": "User already exists"}), 409
+
+    # Create new user
+    new_user = User(
+        email=email,
+        password_hash=generate_password_hash(password),
+        external_id=str(uuid.uuid4()),  # if you're using UUIDs
+        created_at=datetime.utcnow(),
+        consent_timestamp=None,
+        pref_eval_face=True,
+        pref_eval_audio=True,
+        pref_eval_text=True
+    )
+
+    db.session.add(new_user)
+    db.session.commit()
+
+    return jsonify({
+        "message": "User created successfully",
+        "user": {
+            "id": new_user.id,
+            "external_id": new_user.external_id,
+            "email": new_user.email,
+            "created_at": new_user.created_at.isoformat()
+        }
+    }), 201
+
+@api_bp.post("/login")
+def login():
+    data = request.get_json()
+
+    email = data.get("email")
+    password = data.get("password")
+
+    if not email or not password:
+        return jsonify({"error": "Missing credentials"}), 400
+
+    user = User.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({"error": "Invalid email or password"}), 401
+
+    if not check_password_hash(user.password_hash, password):
+        return jsonify({"error": "Invalid email or password"}), 401
+
+    # ✅ Create session
+    session = Session(
+        user_id=user.id,
+        started_at=datetime.utcnow(),
+        last_seen_at=datetime.utcnow()
+    )
+
+    db.session.add(session)
+    db.session.commit()
+
+    return jsonify({
+        "message": "Login successful",
+        "sessionId": session.id,
+        "user": {
+            "id": user.id,
+            "external_id": user.external_id,
+            "created_at": user.created_at.isoformat(),
+            "email": user.email,
+            "consent_timestamp": user.consent_timestamp.isoformat() if user.consent_timestamp else None,
+            "pref_eval_face": user.pref_eval_face,
+            "pref_eval_audio": user.pref_eval_audio,
+            "pref_eval_text": user.pref_eval_text
+        }
+    }), 200
+
+@api_bp.post("/logout")
+@auth_required
+def logout():
+    session = g.current_session
+
+    db.session.delete(session)
+    db.session.commit()
+
+    return jsonify({"message": "logged out"}), 200
+
+@api_bp.get("/profile")
+@auth_required
+def profile():
+    user = g.current_user
+
+    return jsonify({
+        "id": user.id,
+        "external_id": user.external_id,
+        "created_at": user.created_at.isoformat(),
+        "email": user.email,
+
+        # consent
+        "consent_timestamp": user.consent_timestamp.isoformat() if user.consent_timestamp else None,
+
+        # evaluation preferences
+        "pref_eval_face": user.pref_eval_face,
+        "pref_eval_audio": user.pref_eval_audio,
+        "pref_eval_text": user.pref_eval_text
+    })
 
 @api_bp.get("/evaluation/by-date")
 def test_get_evaluations_by_date():

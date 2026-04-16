@@ -141,8 +141,6 @@ export default function ResultsScreen() {
   const heroScale    = useRef(new Animated.Value(0.96)).current;
   const btnOpacity   = useRef(new Animated.Value(0)).current;
 
-  useEffect(()=>console.log("here",fusionModelData),[fusionModelData])
-
   useEffect(() => {
     const run = async () => {
       const data = evaluationId !== null

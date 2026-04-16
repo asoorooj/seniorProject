@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -12,12 +12,23 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useAuth } from "@/hooks/useAuth";
+import { login } from "@/services/apiService";
 
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [submit, setSubmit] = useState(false);
+
+  const { user, sessionId, setUser, setSessionId } = useAuth();
+
+  useEffect(()=>{
+    if(user && sessionId){
+      router.push("/(tabs)");
+    }
+  },[user,sessionId])
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -83,7 +94,15 @@ export default function LoginScreen() {
             <TouchableOpacity
               style={styles.loginButton}
               activeOpacity={0.85}
-              onPress={() => router.replace("/(tabs)")}
+              disabled={submit}
+              onPress={async () => {
+                setSubmit(true);
+                const data = await login(email,password);
+                console.log(data);
+                setUser(data.user);
+                setSessionId(data.session_id)
+                router.replace("/(tabs)")
+              }}
             >
               <Text style={styles.loginButtonText}>Login</Text>
             </TouchableOpacity>
