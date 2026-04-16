@@ -14,6 +14,8 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/hooks/useAuth";
 import { login } from "@/services/apiService";
+import { persistAuthSession, setCurrentUserId } from "@/services/db";
+import { syncAllUnsynced } from "@/services/sync/syncController";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -96,12 +98,18 @@ export default function LoginScreen() {
               activeOpacity={0.85}
               disabled={submit}
               onPress={async () => {
-                setSubmit(true);
-                const data = await login(email,password);
-                console.log(data);
-                setUser(data.user);
-                setSessionId(data.sessionId)
-                router.replace("/(tabs)")
+                try {
+                  setSubmit(true);
+                  const data = await login(email, password);
+                  await persistAuthSession(data.user, data.sessionId);
+                  setCurrentUserId(data.user.id);
+                  setUser(data.user);
+                  setSessionId(data.sessionId);
+                  await syncAllUnsynced(data.sessionId, "action");
+                  router.replace("/(tabs)");
+                } finally {
+                  setSubmit(false);
+                }
               }}
             >
               <Text style={styles.loginButtonText}>Login</Text>

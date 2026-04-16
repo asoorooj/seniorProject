@@ -1,16 +1,13 @@
 import {
-  executeSqlAsync,
   clearDatabase,
+  executeSqlAsync,
   getCurrentUserId,
   initDb,
   setCurrentUserId,
 } from "@/services/db";
 import {
   fetchChatHistory,
-  fetchEmotionalProfile,
   fetchEvaluationsByDate,
-  fetchProfile,
-  fetchWeeklyScores,
   sendChatMessage,
 } from "@/services/apiService";
 import {
@@ -18,18 +15,13 @@ import {
   getOldestServerId,
   markMessageSynced,
   trimSyncedMessages,
-  upsertServerMessages,
   updateMessageStatus,
+  upsertServerMessages,
 } from "@/services/repositories/chatRepository";
 import {
   trimToRecentWeeks,
   upsertServerEntries,
 } from "@/services/repositories/journalRepository";
-import {
-  setEmotionsCache,
-  setProfileCache,
-  setScoresCache,
-} from "@/services/repositories/profileRepository";
 
 type OutboxItem = {
   id: number;
@@ -37,6 +29,37 @@ type OutboxItem = {
   type: "message" | "journal";
   payload_json: string;
 };
+
+type SyncReason = "startup" | "manual" | "action";
+
+let syncInFlight: Promise<SyncReason | null> | null = null;
+let lastSyncStartedAt = 0;
+let unauthorizedHandler: (() => Promise<void> | void) | null = null;
+
+function getWeekStartLocal(date: Date) {
+  const d = new Date(date);
+  d.setDate(d.getDate() - d.getDay());
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function weekStartDateString(date: Date) {
+  const d = getWeekStartLocal(date);
+  return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+}
+
+function isUnauthorizedError(err: unknown) {
+  return err instanceof Error && err.message === "UNAUTHORIZED";
+}
+
+async function handleUnauthorized() {
+  if (!unauthorizedHandler) return;
+  await Promise.resolve(unauthorizedHandler());
+}
+
+export function setSyncUnauthorizedHandler(handler: (() => Promise<void> | void) | null) {
+  unauthorizedHandler = handler;
+}
 
 async function getSyncState(userId: number) {
   await initDb();
@@ -48,28 +71,30 @@ async function getSyncState(userId: number) {
   return row ?? null;
 }
 
-async function setSyncState(userId: number, state: Partial<{
-  last_sync_at: string;
-  messages_cursor: string | null;
-  journal_cursor: string | null;
-}>) {
+async function setSyncState(
+  userId: number,
+  state: Partial<{
+    last_sync_at: string;
+    messages_cursor: string | null;
+    journal_cursor: string | null;
+  }>
+) {
   await initDb();
   const nowIso = new Date().toISOString();
   await executeSqlAsync(
-    `INSERT INTO sync_state (user_id, last_sync_at, messages_cursor, journal_cursor)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO sync_state (user_id, last_sync_at, messages_cursor, journal_cursor, updated_at)
+     VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(user_id) DO UPDATE SET
-       last_sync_at = COALESCE(?, sync_state.last_sync_at),
-       messages_cursor = COALESCE(?, sync_state.messages_cursor),
-       journal_cursor = COALESCE(?, sync_state.journal_cursor);`,
+      last_sync_at = COALESCE(excluded.last_sync_at, sync_state.last_sync_at),
+      messages_cursor = COALESCE(excluded.messages_cursor, sync_state.messages_cursor),
+      journal_cursor = COALESCE(excluded.journal_cursor, sync_state.journal_cursor),
+      updated_at = excluded.updated_at;`,
     [
       userId,
       state.last_sync_at ?? nowIso,
       state.messages_cursor ?? null,
       state.journal_cursor ?? null,
-      state.last_sync_at ?? null,
-      state.messages_cursor ?? null,
-      state.journal_cursor ?? null,
+      nowIso,
     ]
   );
 }
@@ -137,55 +162,61 @@ export async function syncOutbox(
   userId: number = getCurrentUserId(),
   sessionId?: number | null
 ) {
-  console.log("[sync] outbox:start", { userId });
-  if (!sessionId) {
-    console.warn("[sync] outbox:missing_session");
-    return [];
-  }
+  if (!sessionId) return [];
   const items = await listOutbox(userId);
   const responses: any[] = [];
+
   for (const item of items) {
-    if (item.type === "message") {
-      try {
-        const payload = JSON.parse(item.payload_json);
-        const res = await sendChatMessage({
-          sessionId,
-          message: {
-            sessionId: payload.sessionId ?? null,
-            isUser: true,
-            textMessage: payload.textMessage,
-            timestamp: payload.timestamp,
-          },
-        });
-        if (res?.user_message) {
-          await markMessageSynced({
-            localId: payload.localId,
-            serverMessage: res.user_message,
-            userId,
-          });
-        } else {
-          await updateMessageStatus(payload.localId, "sent", userId);
-        }
-        if (res?.response_message) {
-          await upsertServerMessages([res.response_message], userId);
-        }
-        responses.push(res);
-        await deleteOutboxItem(item.id);
-      } catch (err: any) {
-        await updateMessageStatus(
-          JSON.parse(item.payload_json).localId,
-          "failed",
-          userId
-        );
-        await markOutboxAttempt(item.id, String(err?.message ?? err));
-        console.warn("[sync] outbox:item_failed", { id: item.id });
+    if (item.type !== "message") {
+      await markOutboxAttempt(item.id, "Unsupported outbox type");
+      continue;
+    }
+
+    try {
+      const payload = JSON.parse(item.payload_json);
+      const res = await sendChatMessage({
+        sessionId,
+        message: {
+          sessionId: payload.sessionId ?? null,
+          isUser: true,
+          textMessage: payload.textMessage,
+          timestamp: payload.timestamp,
+        },
+      });
+
+      if (!res) {
+        throw new Error("Chat send failed");
       }
-    } else {
-      await markOutboxAttempt(item.id, "Journal sync not implemented");
-      console.warn("[sync] outbox:unsupported_type", { id: item.id });
+
+      if (res?.user_message) {
+        await markMessageSynced({
+          localId: payload.localId,
+          serverMessage: res.user_message,
+          userId,
+        });
+      } else {
+        await updateMessageStatus(payload.localId, "sent", userId);
+      }
+
+      if (res?.response_message) {
+        await upsertServerMessages([res.response_message], userId);
+      }
+
+      responses.push(res);
+      await deleteOutboxItem(item.id);
+    } catch (err: any) {
+      if (isUnauthorizedError(err)) {
+        throw err;
+      }
+      await updateMessageStatus(
+        JSON.parse(item.payload_json).localId,
+        "failed",
+        userId
+      );
+      await markOutboxAttempt(item.id, String(err?.message ?? err));
     }
   }
-  console.log("[sync] outbox:done", { count: items.length });
+
   return responses;
 }
 
@@ -193,24 +224,23 @@ export async function syncMessages(
   userId: number = getCurrentUserId(),
   sessionId?: number | null
 ) {
-  console.log("[sync] messages:start", { userId });
+  if (!sessionId) return null;
   const state = await getSyncState(userId);
   const cursor = state?.messages_cursor ?? null;
-  if (!sessionId) {
-    console.warn("[sync] messages:missing_session");
-    return null;
-  }
-  const data = await fetchChatHistory({ sessionId, cursor });
+  const data = await fetchChatHistory({ sessionId, cursor, limit: 50 });
+  if (!data) return null;
+
   if (data?.messages) {
     await upsertServerMessages(data.messages, userId);
   }
+
   const nextCursor =
     data?.next_cursor ?? data?.next_before_id ?? data?.cursor ?? null;
-  if (nextCursor) {
-    await setSyncState(userId, { messages_cursor: String(nextCursor) });
-  }
+  await setSyncState(userId, {
+    last_sync_at: new Date().toISOString(),
+    messages_cursor: nextCursor ? String(nextCursor) : null,
+  });
   await trimSyncedMessages(50, userId);
-  console.log("[sync] messages:done", { count: data?.messages?.length ?? 0 });
   return data;
 }
 
@@ -220,25 +250,13 @@ export async function syncMessagesBefore(params: {
   sessionId?: number | null;
 }) {
   const { beforeId, userId = getCurrentUserId(), sessionId } = params;
-  console.log("[sync] messagesBefore:start", { userId, beforeId });
-  if (!sessionId) {
-    console.warn("[sync] messagesBefore:missing_session");
-    return null;
-  }
-  const data = await fetchChatHistory({ sessionId, beforeId });
+  if (!sessionId) return null;
+  const data = await fetchChatHistory({ sessionId, beforeId, limit: 20 });
   if (data?.messages) {
     await upsertServerMessages(data.messages, userId);
   }
   await trimSyncedMessages(50, userId);
-  console.log("[sync] messagesBefore:done", { count: data?.messages?.length ?? 0 });
   return data;
-}
-
-function getWeekStartLocal(date: Date) {
-  const d = new Date(date);
-  d.setDate(d.getDate() - d.getDay());
-  d.setHours(0, 0, 0, 0);
-  return d;
 }
 
 export async function syncJournalWeek(
@@ -246,105 +264,133 @@ export async function syncJournalWeek(
   userId: number = getCurrentUserId(),
   sessionId?: number | null
 ) {
-  console.log("[sync] journal:start", { userId });
-  if (!sessionId) {
-    console.warn("[sync] journal:missing_session");
-    return null;
-  }
-  const start = getWeekStartLocal(weekStart);
-  const startDate = `${start.getMonth() + 1}/${start.getDate()}/${start.getFullYear()}`;
+  if (!sessionId) return null;
   const data = await fetchEvaluationsByDate({
     sessionId,
-    startDate,
+    startDate: weekStartDateString(weekStart),
   });
   if (data?.evaluations) {
     await upsertServerEntries(data.evaluations, userId);
   }
   const cutoff = getWeekStartLocal(new Date());
-  cutoff.setDate(cutoff.getDate() - 7 * 7);
+  cutoff.setDate(cutoff.getDate() - 7 * 8);
   await trimToRecentWeeks(cutoff, userId);
-  console.log("[sync] journal:done", { count: data?.evaluations?.length ?? 0 });
   return data;
 }
 
-export async function syncProfileCaches(
-  userId: number = getCurrentUserId(),
-  sessionId?: number | null
+async function warmRecentJournalWindow(
+  userId: number,
+  sessionId: number,
+  weeks = 8
 ) {
-  console.log("[sync] profile:start", { userId });
-  if (!sessionId) {
-    console.warn("[sync] profile:missing_session");
-    return null;
+  const currentWeekStart = getWeekStartLocal(new Date());
+  for (let i = 0; i < weeks; i += 1) {
+    const target = new Date(currentWeekStart);
+    target.setDate(target.getDate() - i * 7);
+    await syncJournalWeek(target, userId, sessionId);
   }
-  const [profile, scores, emotions] = await Promise.all([
-    fetchProfile(sessionId),
-    fetchWeeklyScores(sessionId),
-    fetchEmotionalProfile(sessionId),
-  ]);
-  await Promise.all([
-    setProfileCache(profile, userId),
-    setScoresCache(scores, userId),
-    setEmotionsCache(emotions, userId),
-  ]);
-  console.log("[sync] profile:done");
-  return { profile, scores, emotions };
 }
 
-let syncRetryTimeout: ReturnType<typeof setTimeout> | null = null;
-let syncRetryAttempts = 0;
-const MAX_SYNC_RETRIES = 5;
-const BASE_RETRY_DELAY_MS = 3000;
+async function getHydrationCounts(userId: number) {
+  const messageCountResult = await executeSqlAsync(
+    `SELECT COUNT(*) AS total
+     FROM messages m
+     JOIN sessions s ON s.id = m.session_id
+     WHERE s.user_id = ? AND m.deleted_at IS NULL;`,
+    [userId]
+  );
+  const evalCountResult = await executeSqlAsync(
+    `SELECT COUNT(*) AS total
+     FROM evaluations
+     WHERE user_id = ?;`,
+    [userId]
+  );
+  return {
+    messages: Number((messageCountResult.rows as any).item(0)?.total ?? 0),
+    evaluations: Number((evalCountResult.rows as any).item(0)?.total ?? 0),
+  };
+}
 
-function scheduleSyncRetry(reason: "startup" | "manual") {
-  if (syncRetryTimeout) return;
-  if (syncRetryAttempts >= MAX_SYNC_RETRIES) {
-    console.warn("[sync] all:retry_exhausted", { attempts: syncRetryAttempts });
-    return;
-  }
-  const delay = BASE_RETRY_DELAY_MS * Math.pow(2, syncRetryAttempts);
-  syncRetryAttempts += 1;
-  console.warn("[sync] all:retry_scheduled", { attempt: syncRetryAttempts, delay });
-  syncRetryTimeout = setTimeout(() => {
-    syncRetryTimeout = null;
-    syncAll(reason).catch(() => {});
-  }, delay);
+export async function syncAllUnsynced(
+  sessionId?: number | null,
+  reason: SyncReason = "manual"
+) {
+  if (!sessionId) return null;
+
+  const now = Date.now();
+  if (syncInFlight) return syncInFlight;
+  if (now - lastSyncStartedAt < 800) return null;
+  lastSyncStartedAt = now;
+
+  syncInFlight = (async () => {
+    const userId = getCurrentUserId();
+    try {
+      await initDb();
+      let messagePhaseOk = false;
+      try {
+        await syncOutbox(userId, sessionId);
+        const messageData = await syncMessages(userId, sessionId);
+        messagePhaseOk = Boolean(messageData);
+        if (!messagePhaseOk) {
+          console.warn("[sync] message phase returned no data; UI may remain stale until retry");
+        }
+      } catch (err) {
+        if (isUnauthorizedError(err)) {
+          throw err;
+        }
+        console.warn("[sync] message phase failed", err);
+      }
+
+      try {
+        await warmRecentJournalWindow(userId, sessionId, 8);
+      } catch (err) {
+        if (isUnauthorizedError(err)) {
+          throw err;
+        }
+        console.warn("[sync] journal phase failed", err);
+      }
+
+      await setSyncState(userId, {
+        last_sync_at: new Date().toISOString(),
+      });
+      const counts = await getHydrationCounts(userId);
+      console.log("[sync] hydration counts", {
+        reason,
+        messagePhaseOk,
+        messages: counts.messages,
+        evaluations: counts.evaluations,
+      });
+      return reason;
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        await handleUnauthorized();
+        return null;
+      }
+      console.warn("[sync] syncAllUnsynced failed", err);
+      return null;
+    } finally {
+      syncInFlight = null;
+    }
+  })();
+
+  return syncInFlight;
 }
 
 export async function syncAll(
   reason: "startup" | "manual" = "manual",
   sessionId?: number | null
 ) {
-  const userId = getCurrentUserId();
-  console.log("[sync] all:start", { reason, userId });
-  if (!sessionId) {
-    console.warn("[sync] all:missing_session");
-    return null;
-  }
-  try {
-    await initDb();
-    await syncOutbox(userId, sessionId);
-    await syncMessages(userId, sessionId);
-    await syncJournalWeek(new Date(), userId, sessionId);
-    // await syncProfileCaches(userId);
-    await setSyncState(userId, { last_sync_at: new Date().toISOString() });
-    syncRetryAttempts = 0;
-    console.log("[sync] all:success", { reason });
-    return reason;
-  } catch (err) {
-    console.error("[sync] all:failed", { reason, err });
-    scheduleSyncRetry(reason);
-    return null;
-  }
+  return syncAllUnsynced(sessionId, reason);
 }
 
 export async function clearLocalData() {
   await clearDatabase();
 }
 
-export async function switchUserAndSync(userId: number) {
+export async function switchUserAndSync(userId: number, sessionId?: number | null) {
   await clearDatabase();
   setCurrentUserId(userId);
-  await syncAll("manual");
+  await syncAllUnsynced(sessionId, "manual");
 }
 
 export async function ensureMessageOutboxAndLocal(params: {
@@ -352,17 +398,13 @@ export async function ensureMessageOutboxAndLocal(params: {
   sessionId?: number;
   userId?: number;
 }) {
-  const {
-    textMessage,
-    sessionId,
-    userId = getCurrentUserId(),
-  } = params;
+  const { textMessage, sessionId, userId = getCurrentUserId() } = params;
   const message = await addLocalMessage({
     textMessage,
     sessionId,
     userId,
   });
-  if (message.id) {
+  if (message.id != null) {
     await enqueueMessageOutbox({
       localId: Number(message.id),
       textMessage,

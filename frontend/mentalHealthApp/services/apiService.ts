@@ -27,6 +27,12 @@ async function safeJson(res: Response) {
   }
 }
 
+function throwIfUnauthorized(res: Response) {
+  if (res.status === 401) {
+    throw new Error("UNAUTHORIZED");
+  }
+}
+
 function authJsonHeaders(sessionId: number) {
   return {
     "Content-Type": "application/json",
@@ -56,6 +62,7 @@ export async function fetchChatHistory(params: {
       method: "GET",
       headers: authJsonHeaders(sessionId),
     });
+    throwIfUnauthorized(res);
     if (!res.ok) {
       console.error(await safeJson(res));
       console.warn("[api] fetchChatHistory:failed", { status: res.status });
@@ -82,6 +89,7 @@ export async function sendChatMessage(params: {
       message,
     }),
   });
+  throwIfUnauthorized(res);
   if (!res.ok) {
     console.error(await safeJson(res));
     console.warn("[api] sendChatMessage:failed", { status: res.status });
@@ -104,6 +112,7 @@ export async function fetchEvaluationsByDate(params: {
       headers: authJsonHeaders(sessionId),
     }
   );
+  throwIfUnauthorized(res);
   if (!res.ok) {
     console.warn("[api] fetchEvaluationsByDate:failed", { status: res.status });
     return null;
@@ -157,6 +166,7 @@ export async function fetchCurrentUser(userId: number, sessionId: number) {
     method: "GET",
     headers: authJsonHeaders(sessionId),
   });
+  throwIfUnauthorized(res);
   if (!res.ok) {
     console.warn("[api] fetchCurrentUser:failed", { status: res.status });
     return null;
@@ -176,6 +186,7 @@ export async function updateUserPreferences(
     headers: authJsonHeaders(sessionId),
     body: JSON.stringify(preferences),
   });
+  throwIfUnauthorized(res);
   if (!res.ok) {
     console.warn("[api] updateUserPreferences:failed", { status: res.status });
     return null;

@@ -17,17 +17,15 @@ import MessageBubble from "../components/chat/MessageBubble";
 import { Message } from "../components/chat/Message";
 import ChatInput from "../components/chat/ChatInput";
 import {
-  getHistoryPage,
   getLatestUserEmotionLabel,
   getAllMessages,
 } from "@/services/repositories/chatRepository";
 import {
   ensureMessageOutboxAndLocal,
   getFallbackBeforeId,
-  syncOutbox,
+  syncAllUnsynced,
+  syncMessagesBefore,
 } from "@/services/sync/syncController";
-import { fetchChatHistory } from "@/services/apiService";
-import { getCurrentUserId } from "@/services/db";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function ChatScreen() {
@@ -114,6 +112,9 @@ export default function ChatScreen() {
     if (isFetchingHistory.current) return;
     isFetchingHistory.current = true;
     if (!beforeId) {
+      if (sessionId) {
+        await syncAllUnsynced(sessionId, "action");
+      }
       const localMessages = await getAllMessages();
       setMessages(localMessages);
       nextBeforeId.current = (await getFallbackBeforeId()) ?? undefined;
@@ -123,11 +124,10 @@ export default function ChatScreen() {
         isFetchingHistory.current = false;
         return;
       }
-      // Older paging: fetch older messages into memory only.
-      const data = await fetchChatHistory({
-        sessionId,
+      // Older paging: pull 20-message page from API and persist locally.
+      const data = await syncMessagesBefore({
         beforeId,
-        limit: chatPageLimit,
+        sessionId,
       });
       if (!data) {
         isFetchingHistory.current = false;
@@ -183,51 +183,21 @@ export default function ChatScreen() {
   };
 
   const handleSendMessage = async (text: string) => {
-    new Message({id:undefined,sessionId:undefined,isUser:true, textMessage:text,timestamp: new Date()})
     setMessages((prev) => [...prev, new Message({id:undefined,sessionId:undefined,isUser:true, textMessage:text,timestamp: new Date()})]);
-    const localMessage = await ensureMessageOutboxAndLocal({
+    await ensureMessageOutboxAndLocal({
       textMessage: text,
-      sessionId: undefined,
+      sessionId: sessionId ?? undefined,
     });
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 30);
     setIsGenerating(true);
     try {
-      const responses = await syncOutbox(getCurrentUserId(), sessionId);
-      const latest = responses?.length ? responses[responses.length - 1] : null;
-
-      // Append bot reply directly from API response so UI updates immediately.
-      const responseMessage = latest?.response_message;
-      console.log("Response Message",latest)
-      if (responseMessage) {
-        const botMessage = new Message({
-          id: responseMessage.id ?? responseMessage.server_id,
-          sessionId: responseMessage.sessionId ?? responseMessage.session_id,
-          isUser:
-            typeof responseMessage.isUser === "boolean"
-              ? responseMessage.isUser
-              : responseMessage.role === "user",
-          textMessage:
-            responseMessage.textMessage ??
-            responseMessage.text_message ??
-            responseMessage.message ??
-            "",
-          timestamp: responseMessage.timestamp
-            ? new Date(responseMessage.timestamp)
-            : new Date(),
-        } as Message);
-        setMessages((prev) => [...prev, botMessage]);
+      if (sessionId) {
+        await syncAllUnsynced(sessionId, "action");
       }
-
-      // Update mood pill from latest analyzed user emotion in the same response.
-      const latestEmotion =
-        latest?.user_message?.emotionLabel ??
-        latest?.user_message?.emotion_label;
-      if (latestEmotion) {
-        setMessageEmotion(latestEmotion);
-      } else {
-        const emotion = await getLatestUserEmotionLabel();
-        setMessageEmotion(emotion ?? undefined);
-      }
+      const refreshed = await getAllMessages();
+      setMessages(refreshed);
+      const emotion = await getLatestUserEmotionLabel();
+      setMessageEmotion(emotion ?? undefined);
     } catch (error) {
       console.warn("[chat] handleSendMessage:error", error);
     } finally {
