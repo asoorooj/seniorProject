@@ -133,8 +133,15 @@ export async function enqueueMessageOutbox(params: {
   );
 }
 
-export async function syncOutbox(userId: number = getCurrentUserId()) {
+export async function syncOutbox(
+  userId: number = getCurrentUserId(),
+  sessionId?: number | null
+) {
   console.log("[sync] outbox:start", { userId });
+  if (!sessionId) {
+    console.warn("[sync] outbox:missing_session");
+    return [];
+  }
   const items = await listOutbox(userId);
   const responses: any[] = [];
   for (const item of items) {
@@ -142,7 +149,7 @@ export async function syncOutbox(userId: number = getCurrentUserId()) {
       try {
         const payload = JSON.parse(item.payload_json);
         const res = await sendChatMessage({
-          userId,
+          sessionId,
           message: {
             sessionId: payload.sessionId ?? null,
             isUser: true,
@@ -182,11 +189,18 @@ export async function syncOutbox(userId: number = getCurrentUserId()) {
   return responses;
 }
 
-export async function syncMessages(userId: number = getCurrentUserId()) {
+export async function syncMessages(
+  userId: number = getCurrentUserId(),
+  sessionId?: number | null
+) {
   console.log("[sync] messages:start", { userId });
   const state = await getSyncState(userId);
   const cursor = state?.messages_cursor ?? null;
-  const data = await fetchChatHistory({ userId, cursor });
+  if (!sessionId) {
+    console.warn("[sync] messages:missing_session");
+    return null;
+  }
+  const data = await fetchChatHistory({ sessionId, cursor });
   if (data?.messages) {
     await upsertServerMessages(data.messages, userId);
   }
@@ -203,10 +217,15 @@ export async function syncMessages(userId: number = getCurrentUserId()) {
 export async function syncMessagesBefore(params: {
   beforeId: number;
   userId?: number;
+  sessionId?: number | null;
 }) {
-  const { beforeId, userId = getCurrentUserId() } = params;
+  const { beforeId, userId = getCurrentUserId(), sessionId } = params;
   console.log("[sync] messagesBefore:start", { userId, beforeId });
-  const data = await fetchChatHistory({ userId, beforeId });
+  if (!sessionId) {
+    console.warn("[sync] messagesBefore:missing_session");
+    return null;
+  }
+  const data = await fetchChatHistory({ sessionId, beforeId });
   if (data?.messages) {
     await upsertServerMessages(data.messages, userId);
   }
@@ -224,13 +243,18 @@ function getWeekStartLocal(date: Date) {
 
 export async function syncJournalWeek(
   weekStart: Date,
-  userId: number = getCurrentUserId()
+  userId: number = getCurrentUserId(),
+  sessionId?: number | null
 ) {
   console.log("[sync] journal:start", { userId });
+  if (!sessionId) {
+    console.warn("[sync] journal:missing_session");
+    return null;
+  }
   const start = getWeekStartLocal(weekStart);
   const startDate = `${start.getMonth() + 1}/${start.getDate()}/${start.getFullYear()}`;
   const data = await fetchEvaluationsByDate({
-    userId,
+    sessionId,
     startDate,
   });
   if (data?.evaluations) {
@@ -243,12 +267,19 @@ export async function syncJournalWeek(
   return data;
 }
 
-export async function syncProfileCaches(userId: number = getCurrentUserId()) {
+export async function syncProfileCaches(
+  userId: number = getCurrentUserId(),
+  sessionId?: number | null
+) {
   console.log("[sync] profile:start", { userId });
+  if (!sessionId) {
+    console.warn("[sync] profile:missing_session");
+    return null;
+  }
   const [profile, scores, emotions] = await Promise.all([
-    fetchProfile(),
-    fetchWeeklyScores(),
-    fetchEmotionalProfile(),
+    fetchProfile(sessionId),
+    fetchWeeklyScores(sessionId),
+    fetchEmotionalProfile(sessionId),
   ]);
   await Promise.all([
     setProfileCache(profile, userId),
@@ -279,14 +310,21 @@ function scheduleSyncRetry(reason: "startup" | "manual") {
   }, delay);
 }
 
-export async function syncAll(reason: "startup" | "manual" = "manual") {
+export async function syncAll(
+  reason: "startup" | "manual" = "manual",
+  sessionId?: number | null
+) {
   const userId = getCurrentUserId();
   console.log("[sync] all:start", { reason, userId });
+  if (!sessionId) {
+    console.warn("[sync] all:missing_session");
+    return null;
+  }
   try {
     await initDb();
-    await syncOutbox(userId);
-    await syncMessages(userId);
-    await syncJournalWeek(new Date(), userId);
+    await syncOutbox(userId, sessionId);
+    await syncMessages(userId, sessionId);
+    await syncJournalWeek(new Date(), userId, sessionId);
     // await syncProfileCaches(userId);
     await setSyncState(userId, { last_sync_at: new Date().toISOString() });
     syncRetryAttempts = 0;

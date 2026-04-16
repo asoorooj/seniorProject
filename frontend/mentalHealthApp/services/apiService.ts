@@ -1,4 +1,3 @@
-import { TEST_USER } from "@/components/userTest";
 import { API_BASE } from "@/constants/api";
 import { User } from "@/hooks/useAuth";
 
@@ -28,27 +27,34 @@ async function safeJson(res: Response) {
   }
 }
 
+function authJsonHeaders(sessionId: number) {
+  return {
+    "Content-Type": "application/json",
+    Authorization: String(sessionId),
+  };
+}
+
 export async function fetchChatHistory(params: {
-  userId: number;
+  sessionId: number;
   beforeId?: number;
   cursor?: string | null;
   limit?: number;
 }) {
-  const { userId, beforeId, cursor, limit } = params;
-  console.log("[api] fetchChatHistory:start", { userId, beforeId, cursor, limit });
-  let url = `${API_BASE}/chat/history?user_id=${userId}`;
+  const { sessionId, beforeId, cursor, limit } = params;
+  console.log("[api] fetchChatHistory:start", { beforeId, cursor, limit });
+  let url = `${API_BASE}/chat/history`;
   if (cursor) {
-    url = `${url}&cursor=${encodeURIComponent(cursor)}`;
+    url = `${url}?cursor=${encodeURIComponent(cursor)}`;
   } else if (beforeId) {
-    url = `${url}&before_id=${beforeId}`;
+    url = `${url}?before_id=${beforeId}`;
   }
   if (limit) {
-    url = `${url}&limit=${limit}`;
+    url = `${url}${url.includes("?") ? "&" : "?"}limit=${limit}`;
   }
   try {
     const res = await fetch(url, {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: authJsonHeaders(sessionId),
     });
     if (!res.ok) {
       console.error(await safeJson(res));
@@ -64,16 +70,15 @@ export async function fetchChatHistory(params: {
 }
 
 export async function sendChatMessage(params: {
-  userId: number;
+  sessionId: number;
   message: unknown;
 }) {
-  const { userId, message } = params;
-  console.log("[api] sendChatMessage:start", { userId });
+  const { sessionId, message } = params;
+  console.log("[api] sendChatMessage:start");
   const res = await fetch(`${API_BASE}/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authJsonHeaders(sessionId),
     body: JSON.stringify({
-      userId,
       message,
     }),
   });
@@ -87,16 +92,16 @@ export async function sendChatMessage(params: {
 }
 
 export async function fetchEvaluationsByDate(params: {
-  userId: number;
+  sessionId: number;
   startDate: string;
 }) {
-  const { userId, startDate } = params;
-  console.log("[api] fetchEvaluationsByDate:start", { userId, startDate });
+  const { sessionId, startDate } = params;
+  console.log("[api] fetchEvaluationsByDate:start", { startDate });
   const res = await fetch(
-    `${API_BASE}/evaluation/by-date?user_id=${userId}&start_date=${startDate}`,
+    `${API_BASE}/evaluation/by-date?start_date=${startDate}`,
     {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: authJsonHeaders(sessionId),
     }
   );
   if (!res.ok) {
@@ -108,40 +113,49 @@ export async function fetchEvaluationsByDate(params: {
   return res.json();
 }
 
-export async function fetchProfile() {
+export async function fetchProfile(sessionId: number) {
   console.log("[api] fetchProfile:start");
-  const res = await fetch(`${API_BASE}/api/profile`);
+  const res = await fetch(`${API_BASE}/api/profile`, {
+    headers: authJsonHeaders(sessionId),
+  });
   if (!res.ok) throw new Error("Profile request failed");
   console.log("[api] fetchProfile:success");
   return res.json();
 }
 
-export async function fetchWeeklyScores() {
+export async function fetchWeeklyScores(sessionId: number) {
   console.log("[api] fetchWeeklyScores:start");
-  const res = await fetch(`${API_BASE}/api/scores/week`);
+  const res = await fetch(`${API_BASE}/api/scores/week`, {
+    headers: authJsonHeaders(sessionId),
+  });
   if (!res.ok) throw new Error("Scores request failed");
   console.log("[api] fetchWeeklyScores:success");
   return res.json();
 }
 
-export async function fetchEmotionalProfile() {
+export async function fetchEmotionalProfile(sessionId: number) {
   console.log("[api] fetchEmotionalProfile:start");
-  const res = await fetch(`${API_BASE}/api/emotional-profile`);
+  const res = await fetch(`${API_BASE}/api/emotional-profile`, {
+    headers: authJsonHeaders(sessionId),
+  });
   if (!res.ok) throw new Error("Emotional profile request failed");
   console.log("[api] fetchEmotionalProfile:success");
   return res.json();
 }
 
-export async function logout() {
+export async function logout(sessionId: number) {
   console.log("[api] logout:start");
-  return fetch(`${API_BASE}/api/auth/logout`, { method: "POST" });
+  return fetch(`${API_BASE}/logout`, {
+    method: "POST",
+    headers: authJsonHeaders(sessionId),
+  });
 }
 
-export async function fetchCurrentUser(userId: number) {
+export async function fetchCurrentUser(userId: number, sessionId: number) {
   console.log("[api] fetchCurrentUser:start", { userId });
   const res = await fetch(`${API_BASE}/users/${userId}`, {
     method: "GET",
-    headers: { "Content-Type": "application/json" },
+    headers: authJsonHeaders(sessionId),
   });
   if (!res.ok) {
     console.warn("[api] fetchCurrentUser:failed", { status: res.status });
@@ -152,13 +166,14 @@ export async function fetchCurrentUser(userId: number) {
 }
 
 export async function updateUserPreferences(
+  sessionId: number,
   userId: number,
   preferences: Partial<UserPreferences>
 ) {
   console.log("[api] updateUserPreferences:start", { userId, preferences });
   const res = await fetch(`${API_BASE}/users/${userId}/preferences`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: authJsonHeaders(sessionId),
     body: JSON.stringify(preferences),
   });
   if (!res.ok) {
@@ -169,12 +184,12 @@ export async function updateUserPreferences(
   return res.json() as Promise<{ preferences: UserPreferences }>;
 }
 
-export async function startEvaluation(userId: number) {
-  console.log("[api] startEvaluation:start", { userId });
+export async function startEvaluation(sessionId: number) {
+  console.log("[api] startEvaluation:start");
   const res = await fetch(`${API_BASE}/startevaluation`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userId }),
+    headers: authJsonHeaders(sessionId),
+    body: JSON.stringify({}),
   });
   if (!res.ok) {
     console.warn("[api] startEvaluation:failed", { status: res.status });
@@ -184,11 +199,11 @@ export async function startEvaluation(userId: number) {
   return res.json();
 }
 
-export async function endEvaluation(evaluationId: number) {
+export async function endEvaluation(evaluationId: number, sessionId: number) {
   console.log("[api] endEvaluation:start", { evaluationId });
   const res = await fetch(`${API_BASE}/endevaluation`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authJsonHeaders(sessionId),
     body: JSON.stringify({ evaluationId }),
   });
   if (!res.ok) {
@@ -199,11 +214,11 @@ export async function endEvaluation(evaluationId: number) {
   return res.json();
 }
 
-export async function analyzeFaceImage(base64: string, evaluationId: number) {
+export async function analyzeFaceImage(base64: string, evaluationId: number, sessionId: number) {
   try {
     const res = await fetch(`${API_BASE}/startevaluation_face`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authJsonHeaders(sessionId),
       body: JSON.stringify({ image: base64, evaluationId }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -222,7 +237,7 @@ export async function analyzeFaceImage(base64: string, evaluationId: number) {
   }
 }
 
-export async function analyzeAudioClip(uri: string, evaluationId: number) {
+export async function analyzeAudioClip(uri: string, evaluationId: number, sessionId: number) {
   try {
     const formData = new FormData();
     formData.append("audio", {
@@ -234,6 +249,7 @@ export async function analyzeAudioClip(uri: string, evaluationId: number) {
 
     const res = await fetch(`${API_BASE}/startevaluation_audio`, {
       method: "POST",
+      headers: { Authorization: String(sessionId) },
       body: formData,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -252,11 +268,11 @@ export async function analyzeAudioClip(uri: string, evaluationId: number) {
   }
 }
 
-export async function analyzeTextEntry(text: string, evaluationId: number) {
+export async function analyzeTextEntry(text: string, evaluationId: number, sessionId: number) {
   try {
     const res = await fetch(`${API_BASE}/startevaluation_text`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authJsonHeaders(sessionId),
       body: JSON.stringify({ text, evaluationId }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -275,11 +291,11 @@ export async function analyzeTextEntry(text: string, evaluationId: number) {
   }
 }
 
-export async function cancelEvaluation(evaluationId: number) {
+export async function cancelEvaluation(evaluationId: number, sessionId: number) {
   console.log("[api] cancelEvaluation:start", { evaluationId });
   const res = await fetch(`${API_BASE}/evaluation/${evaluationId}`, {
     method: "DELETE",
-    headers: { "Content-Type": "application/json" },
+    headers: authJsonHeaders(sessionId),
   });
   if (!res.ok) {
     console.warn("[api] cancelEvaluation:failed", { status: res.status });
@@ -319,7 +335,7 @@ export async function updateConsent(consent: { consent_image: boolean; consent_a
   return res.json();
 }
 
-export async function login(email:string, password:string):Promise<{message:string; session_id:number;user:User}>{
+export async function login(email:string, password:string):Promise<{message:string; sessionId:number;user:User}>{
   const res = await fetch(`${API_BASE}/login`, {
     method: "POST",
     headers: {

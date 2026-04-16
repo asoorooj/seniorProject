@@ -247,10 +247,12 @@ const ANALYSIS_DURATION = 3200;
 function AnalyzingScreen({
   text,
   evaluationId,
+  sessionId,
   onComplete,
 }: {
   text: string;
   evaluationId: number | null;
+  sessionId: number | null;
   onComplete: (result: EmotionResult) => void;
 }) {
   const [phraseIndex, setPhraseIndex] = useState(0);
@@ -280,8 +282,8 @@ function AnalyzingScreen({
       }, interval * i));
     });
 
-    if (evaluationId !== null) {
-      analyzeTextEntry(text, evaluationId).then(result => {
+    if (evaluationId !== null && sessionId) {
+      analyzeTextEntry(text, evaluationId, sessionId).then(result => {
         setTimeout(() => onComplete(result), ANALYSIS_DURATION);
       });
     }
@@ -390,6 +392,7 @@ export default function TextSurveyScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     evaluationId?: string;
+    sessionId?: string;
     faceLabel?: string;
     faceConf?: string;
     faceSkipped?: string;
@@ -401,6 +404,7 @@ export default function TextSurveyScreen() {
     prefText?: string;
   }>();
   const evaluationId = params.evaluationId ? Number(params.evaluationId) : null;
+  const sessionId = params.sessionId ? Number(params.sessionId) : null;
   const faceLabel    = params.faceLabel  ?? 'Neutral';
   const faceConf     = params.faceConf   ?? '0';
   const faceSkipped  = params.faceSkipped ?? 'false';
@@ -425,6 +429,7 @@ export default function TextSurveyScreen() {
         pathname: '/survey-results' as any,
         params: {
           evaluationId: String(evaluationId),
+          sessionId: sessionId ? String(sessionId) : '',
           faceLabel,
           faceConf,
           faceSkipped,
@@ -440,7 +445,9 @@ export default function TextSurveyScreen() {
   const handleBack = () => {
     if (step === 'prompt-select') {
       if (evaluationId !== null) {
-        cancelEvaluation(evaluationId).catch(() => {});
+        if (sessionId) {
+          cancelEvaluation(evaluationId, sessionId).catch(() => {});
+        }
       }
       router.back();
     }
@@ -467,9 +474,10 @@ export default function TextSurveyScreen() {
   const handleFinish = () => {
     router.replace({
       pathname: '/survey-results' as any,
-      params: {
-        evaluationId: String(evaluationId),
-        faceLabel,
+        params: {
+          evaluationId: String(evaluationId),
+          sessionId: sessionId ? String(sessionId) : '',
+          faceLabel,
         faceConf,
         faceSkipped,
         audioLabel,
@@ -501,6 +509,7 @@ export default function TextSurveyScreen() {
                 pathname: '/survey-results' as any,
                 params: {
                   evaluationId: String(evaluationId),
+                  sessionId: sessionId ? String(sessionId) : '',
                   faceLabel,
                   faceConf,
                   faceSkipped,
@@ -520,6 +529,7 @@ export default function TextSurveyScreen() {
         <AnalyzingScreen
           text={text}
           evaluationId={evaluationId}
+          sessionId={sessionId}
           onComplete={handleAnalysisComplete}
         />
       )}

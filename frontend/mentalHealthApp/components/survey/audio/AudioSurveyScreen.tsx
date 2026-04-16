@@ -310,10 +310,12 @@ function RecordingScreen({ onStop }: { onStop: (uri: string) => void }) {
 function LoadingScreen({
   uri,
   evaluationId,
+  sessionId,
   onComplete,
 }: {
   uri: string;
   evaluationId: number | null;
+  sessionId: number | null;
   onComplete: (result: EmotionResult) => void;
 }) {
   const progress = useRef(new Animated.Value(0)).current;
@@ -325,8 +327,8 @@ function LoadingScreen({
       useNativeDriver: false,
     }).start();
 
-    if (evaluationId === null) return;
-    analyzeAudioClip(uri, evaluationId).then(result => {
+    if (evaluationId === null || !sessionId) return;
+    analyzeAudioClip(uri, evaluationId, sessionId).then(result => {
       setTimeout(() => onComplete(result), 2800);
     });
   }, []);
@@ -418,6 +420,7 @@ export default function AudioSurveyScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     evaluationId?: string;
+    sessionId?: string;
     faceLabel?: string;
     faceConf?: string;
     faceSkipped?: string;
@@ -426,6 +429,7 @@ export default function AudioSurveyScreen() {
     prefText?: string;
   }>();
   const evaluationId = params.evaluationId ? Number(params.evaluationId) : null;
+  const sessionId = params.sessionId ? Number(params.sessionId) : null;
   const faceLabel    = params.faceLabel ?? 'Neutral';
   const faceConf     = params.faceConf  ?? '0';
   const faceSkipped  = params.faceSkipped ?? 'false';
@@ -446,6 +450,7 @@ export default function AudioSurveyScreen() {
         pathname: '/survey-text' as any,
         params: {
           evaluationId: String(evaluationId),
+          sessionId: sessionId ? String(sessionId) : '',
           faceLabel,
           faceConf,
           faceSkipped,
@@ -461,6 +466,7 @@ export default function AudioSurveyScreen() {
       pathname: '/survey-results' as any,
       params: {
         evaluationId: String(evaluationId),
+        sessionId: sessionId ? String(sessionId) : '',
         faceLabel,
         faceConf,
         faceSkipped,
@@ -481,7 +487,9 @@ export default function AudioSurveyScreen() {
   const handleBack = () => {
     if (step === 'intro') {
       if (evaluationId !== null) {
-        cancelEvaluation(evaluationId).catch(() => {});
+        if (sessionId) {
+          cancelEvaluation(evaluationId, sessionId).catch(() => {});
+        }
       }
       router.back();
     }
@@ -523,6 +531,7 @@ export default function AudioSurveyScreen() {
         <LoadingScreen
           uri={uri}
           evaluationId={evaluationId}
+          sessionId={sessionId}
           onComplete={res => { setResult(res); setStep('result'); }}
         />
       )}

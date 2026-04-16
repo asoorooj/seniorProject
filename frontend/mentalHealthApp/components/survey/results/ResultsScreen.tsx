@@ -52,9 +52,12 @@ function formatNow(): string {
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
-async function callEndEvaluation(evaluationId: number): Promise<{evaluation_id:number; label:string; status:string; suggestion:string; scores:string;} | null> {
+async function callEndEvaluation(
+  evaluationId: number,
+  sessionId: number
+): Promise<{evaluation_id:number; label:string; status:string; suggestion:string; scores:string;} | null> {
   try {
-    const data = await endEvaluation(evaluationId);
+    const data = await endEvaluation(evaluationId, sessionId);
     console.log('Fusion result:', data);
     return data;
   } catch (err) {
@@ -112,6 +115,7 @@ export default function ResultsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     evaluationId?: string;
+    sessionId?: string;
     faceLabel?: string;
     faceConf?: string;
     faceSkipped?: string;
@@ -124,6 +128,7 @@ export default function ResultsScreen() {
   }>();
 
   const evaluationId = params.evaluationId ? Number(params.evaluationId) : null;
+  const sessionId = params.sessionId ? Number(params.sessionId) : null;
   const faceLabel    = params.faceLabel  ?? 'Neutral';
   const faceConf     = Number(params.faceConf  ?? 0);
   const faceSkipped  = params.faceSkipped === 'true';
@@ -143,8 +148,8 @@ export default function ResultsScreen() {
 
   useEffect(() => {
     const run = async () => {
-      const data = evaluationId !== null
-        ? await callEndEvaluation(evaluationId)
+      const data = evaluationId !== null && sessionId
+        ? await callEndEvaluation(evaluationId, sessionId)
         : null;
       setFusionModelData(data);
       setLoading(false);

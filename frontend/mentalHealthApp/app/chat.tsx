@@ -28,6 +28,7 @@ import {
 } from "@/services/sync/syncController";
 import { fetchChatHistory } from "@/services/apiService";
 import { getCurrentUserId } from "@/services/db";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function ChatScreen() {
   const router = useRouter();
@@ -43,6 +44,8 @@ export default function ChatScreen() {
   const [messageEmotion, setMessageEmotion] = useState<string|undefined>(undefined);
   const [messages, setMessages] = useState<Message[]>([]);
   const chatPageLimit = 20;
+  const { sessionId } = useAuth();
+
 
   const messageKey = (message: Message, index = 0) => {
     const idPart =
@@ -116,9 +119,13 @@ export default function ChatScreen() {
       nextBeforeId.current = (await getFallbackBeforeId()) ?? undefined;
       hasMoreRef.current = Boolean(nextBeforeId.current);
     } else {
+      if (!sessionId) {
+        isFetchingHistory.current = false;
+        return;
+      }
       // Older paging: fetch older messages into memory only.
       const data = await fetchChatHistory({
-        userId: getCurrentUserId(),
+        sessionId,
         beforeId,
         limit: chatPageLimit,
       });
@@ -185,7 +192,7 @@ export default function ChatScreen() {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 30);
     setIsGenerating(true);
     try {
-      const responses = await syncOutbox();
+      const responses = await syncOutbox(getCurrentUserId(), sessionId);
       const latest = responses?.length ? responses[responses.length - 1] : null;
 
       // Append bot reply directly from API response so UI updates immediately.

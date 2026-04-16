@@ -100,7 +100,7 @@ export default function LoginScreen() {
                 const data = await login(email,password);
                 console.log(data);
                 setUser(data.user);
-                setSessionId(data.session_id)
+                setSessionId(data.sessionId)
                 router.replace("/(tabs)")
               }}
             >

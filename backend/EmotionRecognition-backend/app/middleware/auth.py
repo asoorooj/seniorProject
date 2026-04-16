@@ -45,6 +45,9 @@ def auth_required(fn):
         # 6. attach to request context
         g.current_user = user
         g.current_session = session
+        # Backward-compatible aliases for handlers that prefer shorter names.
+        g.user = user
+        g.session = session
 
         return fn(*args, **kwargs)
 

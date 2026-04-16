@@ -21,10 +21,7 @@ from app.models.db_models import (
 )
 
 from app.chatbot_service import (
-    createChat,
-    create_chat_session_with_id,
     create_chat_with_id,
-    get_chat_history,
     quickEval,
 )
 from app.ai_models import (
@@ -35,13 +32,10 @@ from app.ai_models import (
     predict_emotion_text,
     predict_audio_file,
 )
-from google.genai import types
-from google import genai
 
 api_bp = Blueprint("api", __name__)
 
 CLOUDCONVERT_API_KEY = os.getenv("CLOUD_CONVERT_KEY")
-TEST_USER = {"user_id":1}
 
 def _parse_iso_dt(value, field_name):
     if value is None:
@@ -130,15 +124,39 @@ def _message_to_dict(message):
         "status": "sent",
     }
 
+def _forbidden():
+    return jsonify({"error": "forbidden"}), 403
+
+
+def _ensure_current_user_matches(user_id):
+    if g.current_user.id != user_id:
+        return _forbidden()
+    return None
+
+
+def _get_owned_evaluation_or_error(evaluation_id):
+    evaluation = Evaluation.query.get(evaluation_id)
+    if not evaluation:
+        return None, jsonify({"error": "evaluation not found"}), 404
+    if evaluation.user_id != g.current_user.id:
+        forbidden_response, forbidden_status = _forbidden()
+        return None, forbidden_response, forbidden_status
+    return evaluation, None, None
+
 
 @api_bp.get("/users")
+@auth_required
 def list_users():
-    users = User.query.order_by(User.id.asc()).all()
+    users = [g.current_user]
     return jsonify(users=[_user_to_dict(u) for u in users]), 200
 
 
 @api_bp.get("/users/<int:user_id>")
+@auth_required
 def get_user(user_id):
+    mismatch_error = _ensure_current_user_matches(user_id)
+    if mismatch_error:
+        return mismatch_error
     user = User.query.get(user_id)
     if not user:
         return _json_error("User not found", 404)
@@ -146,6 +164,7 @@ def get_user(user_id):
 
 
 @api_bp.post("/users")
+@auth_required
 def create_user():
     payload = request.get_json(silent=True) or {}
     external_id = payload.get("external_id")
@@ -159,7 +178,11 @@ def create_user():
 
 
 @api_bp.put("/users/<int:user_id>")
+@auth_required
 def update_user(user_id):
+    mismatch_error = _ensure_current_user_matches(user_id)
+    if mismatch_error:
+        return mismatch_error
     payload = request.get_json(silent=True) or {}
     user = User.query.get(user_id)
     if not user:
@@ -173,7 +196,11 @@ def update_user(user_id):
 
 
 @api_bp.put("/users/<int:user_id>/preferences")
+@auth_required
 def update_user_preferences(user_id):
+    mismatch_error = _ensure_current_user_matches(user_id)
+    if mismatch_error:
+        return mismatch_error
     payload = request.get_json(silent=True) or {}
     user = User.query.get(user_id)
     if not user:
@@ -206,7 +233,11 @@ def update_user_preferences(user_id):
 
 
 @api_bp.delete("/users/<int:user_id>")
+@auth_required
 def delete_user(user_id):
+    mismatch_error = _ensure_current_user_matches(user_id)
+    if mismatch_error:
+        return mismatch_error
     user = User.query.get(user_id)
     if not user:
         return _json_error("User not found", 404)
@@ -329,12 +360,11 @@ def profile():
     })
 
 @api_bp.get("/evaluation/by-date")
+@auth_required
 def test_get_evaluations_by_date():
     try:
-        user_id = request.args.get("user_id", type=int)
+        user_id = g.current_user.id
         start_date_raw = request.args.get("start_date")
-        if not user_id:
-            return jsonify(error="user_id is required"), 400
         if not start_date_raw:
             return jsonify(error="start_date is required"), 400
 
@@ -435,13 +465,11 @@ def test_get_evaluations_by_date():
         return jsonify({"error": "there was an error"}), 500
     
 @api_bp.get("/evaluation/by-month")
+@auth_required
 def get_evaluations_by_month():
     try:
-        user_id = request.args.get("user_id", type=int)
+        user_id = g.current_user.id
         month = request.args.get("month", type=int)  # 0-11
-
-        if user_id is None:
-            return jsonify(error="user_id is required"), 400
 
         if month is None or month < 0 or month > 11:
             return jsonify(error="month must be between 0 and 11"), 400
@@ -542,8 +570,9 @@ def get_evaluations_by_month():
         return jsonify(error="there was an error"), 500
 
 @api_bp.post("/recieve_eval_data")
+@auth_required
 def recieve_eval():
-    user_id = TEST_USER["user_id"]
+    user_id = g.current_user.id
 
     try:
         audio_file_suffix = ".wav"
@@ -774,15 +803,9 @@ def save_full_evaluation(
         }
     
 @api_bp.post("/startevaluation")
+@auth_required
 def start_evaluation():
-    payload = request.get_json(silent=True) or {}
-    user_id = payload.get("userId")
-    if not user_id:
-        return jsonify({
-            "evaluation_id": None,
-            "status": "skipped saving evaluation (missing userId)",
-            "db_saved": False,
-        }), 200
+    user_id = g.current_user.id
     try:
         evaluation = Evaluation(
             user_id=user_id,
@@ -806,16 +829,15 @@ def start_evaluation():
     })
 
 @api_bp.post("/startevaluation_face")
+@auth_required
 def start_evaluation_face():
     payload = request.get_json(silent=True) or {}
-    user_id = payload.get("userId")
     evaluation_id = payload.get("evaluationId")
     try:
         image_bytes = None
         if request.mimetype and request.mimetype.startswith("multipart/form-data"):
             image_file = request.files.get("image")
             image_bytes = image_file.read() if image_file else None
-            user_id = user_id or request.form.get("userId")
             evaluation_id = evaluation_id or request.form.get("evaluationId")
         elif request.is_json:
             image_b64 = payload.get("image")
@@ -824,28 +846,33 @@ def start_evaluation_face():
                         image_b64 = image_b64.split(",")[1]
                     image_b64 = image_b64 + '=' * (-len(image_b64) % 4)
                     image_bytes = base64.b64decode(image_b64)
+        if not evaluation_id:
+            return jsonify({"status": "error", "message": "evaluationId is required"}), 400
+        evaluation_id = int(evaluation_id)
+        _, error_response, error_status = _get_owned_evaluation_or_error(evaluation_id)
+        if error_response:
+            return error_response, error_status
         pred, probs, vec = predict_face(image_bytes)
         scores = _vector_to_scores_dict(vec)
         db_saved = False
-        if user_id and evaluation_id:
-            image_eval = ImageEvalutations.query.filter_by(
-                evaluation_id=evaluation_id
-            ).first()
-            if image_eval:
-                image_eval.label = pred
-                image_eval.scores = scores
-                image_eval.data = None
-            else:
-                image_eval = ImageEvalutations(
-                    evaluation_id=evaluation_id,
-                    label=pred,
-                    scores=scores,
-                    data=None
-                )
-                db.session.add(image_eval)
-            db.session.flush()
-            db.session.commit()
-            db_saved = True
+        image_eval = ImageEvalutations.query.filter_by(
+            evaluation_id=evaluation_id
+        ).first()
+        if image_eval:
+            image_eval.label = pred
+            image_eval.scores = scores
+            image_eval.data = None
+        else:
+            image_eval = ImageEvalutations(
+                evaluation_id=evaluation_id,
+                label=pred,
+                scores=scores,
+                data=None
+            )
+            db.session.add(image_eval)
+        db.session.flush()
+        db.session.commit()
+        db_saved = True
     except Exception as e:        
         db.session.rollback()
         print("ERROR:", str(e)) 
@@ -862,34 +889,39 @@ def start_evaluation_face():
     })
 
 @api_bp.post("/startevaluation_text")
+@auth_required
 def start_eval_text():
     payload = request.get_json(silent=True) or {}
-    user_id = payload.get("userId")
     evaluation_id = payload.get("evaluationId")
     text = payload.get("text")
     try:
+        if not evaluation_id:
+            return jsonify({"status": "error", "message": "evaluationId is required"}), 400
+        evaluation_id = int(evaluation_id)
+        _, error_response, error_status = _get_owned_evaluation_or_error(evaluation_id)
+        if error_response:
+            return error_response, error_status
         pred, probs, vec = predict_emotion_text(text)
         scores = _vector_to_scores_dict(vec)
         db_saved = False
-        if user_id and evaluation_id:
-            text_eval = TextEvalutations.query.filter_by(
-                evaluation_id=evaluation_id
-            ).first()
-            if text_eval:
-                text_eval.label = pred
-                text_eval.scores = scores
-                text_eval.data = text
-            else:
-                text_eval = TextEvalutations(
-                    evaluation_id=evaluation_id,
-                    label=pred,
-                    scores=scores,
-                    data=text
-                )
-                db.session.add(text_eval)
-            db.session.flush()
-            db.session.commit()
-            db_saved = True
+        text_eval = TextEvalutations.query.filter_by(
+            evaluation_id=evaluation_id
+        ).first()
+        if text_eval:
+            text_eval.label = pred
+            text_eval.scores = scores
+            text_eval.data = text
+        else:
+            text_eval = TextEvalutations(
+                evaluation_id=evaluation_id,
+                label=pred,
+                scores=scores,
+                data=text
+            )
+            db.session.add(text_eval)
+        db.session.flush()
+        db.session.commit()
+        db_saved = True
     except Exception:
         db.session.rollback()
         return jsonify({
@@ -905,9 +937,9 @@ def start_eval_text():
     })
 
 @api_bp.post("/startevaluation_audio")
+@auth_required
 def start_eval_audio():
     payload = request.get_json(silent=True) or {}
-    user_id = payload.get("userId")
     evaluation_id = payload.get("evaluationId")
 
     try:
@@ -922,10 +954,8 @@ def start_eval_audio():
 
                 # detect extension
                 _, ext = os.path.splitext(audio_file.filename or "")
-                if ext:
+            if ext:
                     audio_file_suffix = ext.lower()
-
-            user_id = user_id or request.form.get("userId")
             evaluation_id = evaluation_id or request.form.get("evaluationId")
 
         elif request.is_json:
@@ -939,6 +969,12 @@ def start_eval_audio():
                 "status": "error",
                 "message": "No audio provided"
             }), 400
+        if not evaluation_id:
+            return jsonify({"status": "error", "message": "evaluationId is required"}), 400
+        evaluation_id = int(evaluation_id)
+        _, error_response, error_status = _get_owned_evaluation_or_error(evaluation_id)
+        if error_response:
+            return error_response, error_status
 
         # 🔥 M4A → CLOUDCONVERT PATH
         if audio_file_suffix == ".m4a":
@@ -955,27 +991,26 @@ def start_eval_audio():
         scores = _vector_to_scores_dict(vec)
         db_saved = False
 
-        if user_id and evaluation_id:
-            audio_eval = AudioEvalutations.query.filter_by(
-                evaluation_id=evaluation_id
-            ).first()
+        audio_eval = AudioEvalutations.query.filter_by(
+            evaluation_id=evaluation_id
+        ).first()
 
-            if audio_eval:
-                audio_eval.label = pred
-                audio_eval.scores = scores
-                audio_eval.data = None
-            else:
-                audio_eval = AudioEvalutations(
-                    evaluation_id=evaluation_id,
-                    label=pred,
-                    scores=scores,
-                    data=None
-                )
-                db.session.add(audio_eval)
+        if audio_eval:
+            audio_eval.label = pred
+            audio_eval.scores = scores
+            audio_eval.data = None
+        else:
+            audio_eval = AudioEvalutations(
+                evaluation_id=evaluation_id,
+                label=pred,
+                scores=scores,
+                data=None
+            )
+            db.session.add(audio_eval)
 
-            db.session.flush()
-            db.session.commit()
-            db_saved = True
+        db.session.flush()
+        db.session.commit()
+        db_saved = True
 
     except Exception:
         db.session.rollback()
@@ -1002,15 +1037,16 @@ def _scores_to_fusion_vector(scores):
     return None
 
 @api_bp.post("/endevaluation")
+@auth_required
 def end_evaluation():
     payload = request.get_json(silent=True) or {}
     evaluation_id = payload.get("evaluationId")
     if not evaluation_id:
         return jsonify({"error": "evaluationId is required"}), 400
 
-    evaluation = Evaluation.query.get(evaluation_id)
-    if not evaluation:
-        return jsonify({"error": "evaluation not found"}), 404
+    evaluation, error_response, error_status = _get_owned_evaluation_or_error(evaluation_id)
+    if error_response:
+        return error_response, error_status
 
     text_eval = TextEvalutations.query.filter_by(evaluation_id=evaluation_id).first()
     image_eval = ImageEvalutations.query.filter_by(evaluation_id=evaluation_id).first()
@@ -1063,10 +1099,11 @@ def end_evaluation():
 
 
 @api_bp.delete("/evaluation/<int:evaluation_id>")
+@auth_required
 def cancel_evaluation(evaluation_id):
-    evaluation = Evaluation.query.get(evaluation_id)
-    if not evaluation:
-        return jsonify({"error": "evaluation not found"}), 404
+    evaluation, error_response, error_status = _get_owned_evaluation_or_error(evaluation_id)
+    if error_response:
+        return error_response, error_status
 
     try:
         db.session.delete(evaluation)
@@ -1081,10 +1118,11 @@ def cancel_evaluation(evaluation_id):
     }), 200
 
 @api_bp.post("/chat")
+@auth_required
 def chat_with_gemini():
     payload = request.get_json(silent=True) or {}
     message_payload = payload.get("message")
-    user_id = payload.get("userId")
+    user_id = g.current_user.id
     if not isinstance(message_payload, dict):
         return _json_error("message is required and must be an object", 400)
     text_message = message_payload.get("textMessage")
@@ -1093,21 +1131,15 @@ def chat_with_gemini():
     session_id = message_payload.get("sessionId") or payload.get("sessionId")
     try:
         if session_id:
+            incoming_session = Session.query.get(int(session_id))
+            if not incoming_session:
+                return _json_error("session not found", 404)
+            if incoming_session.user_id != user_id:
+                return _forbidden()
             chat = create_chat_with_id(session_id)
         else:
-            if not user_id:
-                return _json_error("userId is required when sessionId is missing", 400)
-            session = (
-                Session.query.filter_by(user_id=user_id)
-                .order_by(Session.id.asc())
-                .first()
-            )
-            if session:
-                session_id = session.id
-                chat = create_chat_with_id(session_id)
-            else:
-                session, chat = create_chat_session_with_id(user_id)
-                session_id = session.id
+            session_id = g.current_session.id
+            chat = create_chat_with_id(session_id)
 
         user_emotion_label, _, _ = predict_emotion_text(text_message)
         user_message = Message(
@@ -1140,27 +1172,41 @@ def chat_with_gemini():
 
 
 @api_bp.get("/chat/history")
+@auth_required
 def get_chat_history_endpoint():
-    session_id = request.args.get("session_id", type=int)
-    user_id = request.args.get("user_id", type=int)
     before_id = request.args.get("before_id", type=int)
+    cursor = request.args.get("cursor", type=int)
     limit = request.args.get("limit", type=int) or 20
+    before_id = before_id or cursor
 
-    if not session_id:
-        if not user_id:
-            return _json_error("session_id is required (or provide user_id)", 400)
-        session = (
-            Session.query.filter_by(user_id=user_id)
-            .order_by(Session.id.asc())
-            .first()
-        )
-        if not session:
-            return _json_error("session not found for user_id", 404)
-        session_id = session.id
     if limit <= 0 or limit > 50:
         return _json_error("limit must be between 1 and 50", 400)
 
-    payload = get_chat_history(session_id, limit=limit, before_id=before_id)
+    query = (
+        Message.query.join(Session, Message.session_id == Session.id)
+        .filter(Session.user_id == g.current_user.id)
+    )
+    if before_id is not None:
+        query = query.filter(Message.id < before_id)
+
+    rows = query.order_by(Message.id.desc()).limit(limit).all()
+    messages = [
+        {
+            "id": m.id,
+            "session_id": m.session_id,
+            "role": m.role,
+            "textMessage": m.textMessage,
+            "emotionLabel": m.emotion_label,
+            "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+        }
+        for m in rows
+    ]
+    messages.reverse()
+    payload = {
+        "messages": messages,
+        "has_more": len(rows) == limit,
+        "next_before_id": rows[-1].id if rows else None,
+    }
     return jsonify(payload), 200
 
 def convert_m4a_bytes_to_wav_bytes(m4a_bytes: bytes) -> bytes:

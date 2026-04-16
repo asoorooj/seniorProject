@@ -5,9 +5,8 @@ import {
     RawEntry,
     getEntriesForRange,
 } from '@/services/repositories/journalRepository';
-import { syncJournalWeek } from '@/services/sync/syncController';
 import { fetchEvaluationsByDate } from '@/services/apiService';
-import { TEST_USER } from '@/components/userTest';
+import { useAuth } from '@/hooks/useAuth';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -169,6 +168,7 @@ export function getWeekStart(date: Date): Date {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useJournalData() {
+    const { sessionId } = useAuth();
     const today = new Date();
 
     const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(today));
@@ -248,7 +248,7 @@ export function useJournalData() {
             if (loadedWeeksRef.current[weekKey]) {
                 rawEntries = loadedWeeksRef.current[weekKey];
             } else {
-                let localWeekEntries = await getEntriesForRange({ start, end });
+                await getEntriesForRange({ start, end });
                 // if (localWeekEntries.length > 0) { //LOCAL DB NOT WORKING RN USING SERVER DB
                 //     rawEntries = localWeekEntries;
                 // } else if (noDataWeeksRef.current[weekKey]) {
@@ -264,24 +264,28 @@ export function useJournalData() {
                 //         rawEntries = localWeekEntries;
                 //     }
                 // } else {
-                    const data = await fetchEvaluationsByDate({
-                        userId: TEST_USER.userId,
-                        startDate: weekStartDateString(weekStart),
-                    });
-                    if (data && Array.isArray(data.evaluations)) {
-                        const mapped = mapEvaluationsToRawEntries(data);
-                        if (mapped.length === 0) {
-                            noDataWeeksRef.current[weekKey] = true;
-                            console.log("[journal] week_cached_empty", { weekKey });
-                        } else {
-                            loadedWeeksRef.current[weekKey] = mapped;
-                            console.log("[journal] week_cached_memory", { weekKey, count: mapped.length });
-                        }
-                        rawEntries = mapped;
-                    } else {
-                        // Server error or malformed response: do not cache, allow retry on reselect.
-                        console.warn("[journal] week_fetch_failed", { weekKey });
+                    if (!sessionId) {
                         rawEntries = [];
+                    } else {
+                        const data = await fetchEvaluationsByDate({
+                            sessionId,
+                            startDate: weekStartDateString(weekStart),
+                        });
+                        if (data && Array.isArray(data.evaluations)) {
+                            const mapped = mapEvaluationsToRawEntries(data);
+                            if (mapped.length === 0) {
+                                noDataWeeksRef.current[weekKey] = true;
+                                console.log("[journal] week_cached_empty", { weekKey });
+                            } else {
+                                loadedWeeksRef.current[weekKey] = mapped;
+                                console.log("[journal] week_cached_memory", { weekKey, count: mapped.length });
+                            }
+                            rawEntries = mapped;
+                        } else {
+                            // Server error or malformed response: do not cache, allow retry on reselect.
+                            console.warn("[journal] week_fetch_failed", { weekKey });
+                            rawEntries = [];
+                        }
                     }
                 // }
             }
@@ -296,7 +300,7 @@ export function useJournalData() {
         run();
 
         return () => { cancelled = true; };
-    }, [weekStart.toISOString()]);
+    }, [weekStart.toISOString(), sessionId]);
 
     // When the selected day changes: filter from the already-fetched week entries
     // Does not call the API again, its sliced from what we collected
