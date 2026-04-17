@@ -2,6 +2,7 @@ import * as SQLite from "expo-sqlite";
 import type { SQLiteDatabase } from "expo-sqlite";
 import type { SQLiteRunResult } from "expo-sqlite";
 
+
 type RowSet = {
   length: number;
   item: (index: number) => any;

@@ -6,6 +6,7 @@ from app.utils.jwt_utils import create_jwt
 import uuid
 from werkzeug.security import check_password_hash
 
+
 auth_bp = Blueprint("auth", __name__)
 
 @auth_bp.post("/auth/register")
@@ -48,6 +49,7 @@ def register():
 
     token = create_jwt(user.id)
 
+
     return jsonify({
         "message": "registered successfully",
         "user": {
@@ -83,6 +85,7 @@ def login():
 
     if user:
         print("Password match:", user.check_password(password))
+        
     if not user or not user.check_password(password):
         return jsonify({"error": "invalid credentials"}), 401
 
@@ -97,5 +100,6 @@ def login():
             "email": user.email,
             "external_id": user.external_id
         },
-        "access_token": token
+        "access_token": token,
+        "user_id": user.id
     }), 200

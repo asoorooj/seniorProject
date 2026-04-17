@@ -2,13 +2,14 @@ import jwt
 from jwt import ExpiredSignatureError, InvalidTokenError
 from datetime import datetime, timedelta, timezone
 from flask import current_app
+import os
 
 
 def create_jwt(user_id: int) -> str:
     now = datetime.now(timezone.utc)
 
     exp_minutes = int(current_app.config.get("JWT_EXPIRES_MIN", 60 * 24 * 30))  # default to 30 days
-    secret = current_app.config.get("JWT_SECRET", "dev-secret-change-me")
+    secret = os.getenv("JWT_SECRET")
 
     payload = {
         "sub": str(user_id),
@@ -22,7 +23,7 @@ def create_jwt(user_id: int) -> str:
 
 
 def decode_jwt(token: str):
-    secret = current_app.config.get("JWT_SECRET", "dev-secret-change-me")
+    secret = os.getenv("JWT_SECRET")
 
     try:
         payload = jwt.decode(token, secret, algorithms=["HS256"])

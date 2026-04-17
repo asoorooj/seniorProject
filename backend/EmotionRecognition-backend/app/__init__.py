@@ -43,6 +43,15 @@ def create_app():
     from app.routes.auth_routes import auth_bp
     flask_app.register_blueprint(auth_bp)
 
+    # Handle Unauthorized error (401) and Forbidden error (403)
+    @flask_app.errorhandler(401)
+    def unauthorized_error(_):
+        return jsonify(error="Unauthorized", message="Missing or invalid token"), 401
+
+    @flask_app.errorhandler(403)
+    def forbidden_error(_):
+        return jsonify(error="Forbidden", message="You do not have permission to access this resource"), 403
+
     # Error handlers
     @flask_app.errorhandler(404)
     def not_found(_):
