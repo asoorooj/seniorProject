@@ -13,19 +13,21 @@ export interface MetricBarData {
 
 export function MetricBar({ bar }: { bar: MetricBarData }) {
     return (
-        <View style={styles.barRow}>
-            <Text style={styles.barIcon}>{bar.icon}</Text>
-            <Text style={styles.barLabel}>{bar.label}</Text>
-            <View style={styles.barTrack}>
-                <LinearGradient
-                    colors={[bar.color + '5C', bar.color]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={[styles.barFill, { width: `${bar.value}%` }]}
-                />
+        bar.value > 0 && (
+            <View style={styles.barRow}>
+                <Text style={styles.barIcon}>{bar.icon}</Text>
+                <Text style={styles.barLabel}>{bar.label}</Text>
+                <View style={styles.barTrack}>
+                    <LinearGradient
+                        colors={[bar.color + '5C', bar.color]}
+                        start={{x: 0, y: 0}}
+                        end={{x: 1, y: 0}}
+                        style={[styles.barFill, {width: `${bar.value}%`}]}
+                    />
+                </View>
+                <Text style={[styles.barText, {color: bar.color}]}>{bar.text}</Text>
             </View>
-            <Text style={[styles.barText, { color: bar.color }]}>{bar.text}</Text>
-        </View>
+        )
     );
 }
 
