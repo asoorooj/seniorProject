@@ -278,32 +278,24 @@ function scheduleSyncRetry(reason: "startup" | "manual") {
     syncAll(reason).catch(() => {});
   }, delay);
 }
-import { getAuthToken } from "@/services/auth";
 
 export async function syncAll(reason: "startup" | "manual" = "manual") {
-  const token = await getAuthToken();
   const userId = getCurrentUserId();
-
-  if (!token || !userId) {
-    console.log("[sync] blocked → no auth context");
-    return;
-  }
-
+  console.log("[sync] all:start", { reason, userId });
   try {
     await initDb();
-
     await syncOutbox(userId);
     await syncMessages(userId);
     await syncJournalWeek(new Date(), userId);
     await syncProfileCaches(userId);
-
-  } catch (err: any) {
-    if (err?.status === 401) {
-      console.warn("[sync] unauthorized → stopping");
-      return;
-    }
-
+    await setSyncState(userId, { last_sync_at: new Date().toISOString() });
+    syncRetryAttempts = 0;
+    console.log("[sync] all:success", { reason });
+    return reason;
+  } catch (err) {
+    console.error("[sync] all:failed", { reason, err });
     scheduleSyncRetry(reason);
+    return null;
   }
 }
 

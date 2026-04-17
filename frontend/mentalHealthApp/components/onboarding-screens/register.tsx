@@ -16,8 +16,6 @@ import { Feather } from '@expo/vector-icons';
 // TODO (auth team): import saveAuth from '@/services/auth' and call saveAuth(data.token, data.user.id, data.user.email) after successful registration to persist the auth token
 import { switchUserAndSync } from '@/services/sync/syncController';
 import { setCurrentUserId } from '@/services/db';
-import { registerUser, saveToken } from '../../constants/api';
-  
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -44,7 +42,34 @@ export default function RegisterScreen() {
     }
   }, [agreedParam]);
 
-  
+  async function handleCreateAccount() {
+    setError('');
+    if (!agreed) {
+      setShowTermsError(true);
+      return;
+    }
+    if (!email.trim() || !password) {
+      setError('Email and password are required.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setLoading(true);
+    try {
+      // TEMP: mock response for testing without backend — remove when backend is running
+      const data = { token: 'mock-token', user: { id: 1, email: email.trim().toLowerCase() } };
+      // const data = await registerUser({ email: email.trim().toLowerCase(), password, name: fullName.trim() || undefined });
+      // TODO (auth team): call saveAuth(data.token, data.user.id, data.user.email) here to persist the session
+      setCurrentUserId(data.user.id);
+      router.push('/onboarding');
+      switchUserAndSync(data.user.id).catch(() => {});
+    } catch (err: any) {
+      setError(err.message ?? 'Registration failed. Please try again.');
+      setLoading(false);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
@@ -184,34 +209,8 @@ export default function RegisterScreen() {
             <TouchableOpacity
               style={styles.createAccountButton}
               activeOpacity={0.8}
-              onPress={async () => {
-                if (!agreed) {
-                  setShowTermsError(true);
-                  return;
-                }
-
-                if (password !== confirmPassword) {
-                  console.log("Passwords do not match");
-                  return;
-                }
-
-                try {
-                  const res = await registerUser(email, password);
-
-                  console.log("REGISTER RESPONSE:", res);
-
-                  if (res.token) {
-                    await saveToken(res.token);
-                    console.log("Registered successfully");
-
-                    router.replace("/(tabs)");
-                  } else {
-                    console.log(res.error);
-                  }
-                } catch (err) {
-                  console.log("REGISTER ERROR:", err);
-                }
-              }}
+              onPress={handleCreateAccount}
+              disabled={loading}
             >
               {loading ? (
                 <ActivityIndicator color="#fff" />

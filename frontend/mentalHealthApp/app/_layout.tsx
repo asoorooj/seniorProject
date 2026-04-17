@@ -5,9 +5,6 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SyncProvider } from '@/services/sync/SyncProvider';
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useEffect, useState } from 'react';
-
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -15,26 +12,6 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const [token, setToken] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const loadToken = async () => {
-      const t = await AsyncStorage.getItem("token");
-      setToken(t);
-      setLoading(false);
-    };
-
-    loadToken();
-  }, []);
-
-  if (loading) return null;
-
-  if (!token) {
-    return <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="login" />
-    </Stack>;
-  }
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

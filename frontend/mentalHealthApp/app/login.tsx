@@ -12,35 +12,13 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { loginUser, saveToken } from "../constants/api";
-import { setCurrentUserId } from "@/services/db";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleLogin = async () => {
-    const res = await loginUser(email, password);
-
-    console.log("RES:", res);
-
-    if (res.access_token && res.user_id) {
-      await saveToken(res.access_token);
-      const userId = res.user_id.toString();
-      await AsyncStorage.setItem("user_id", userId);
-      setCurrentUserId(res.user_id);
-      router.replace("/login");
-      router.replace("/(tabs)");
-      const token = await AsyncStorage.getItem("token");
-      const user_id = await AsyncStorage.getItem("user_id");
-      console.log("SAVED TOKEN:", token);
-      console.log("UserId: ", userId);
-    } else {
-      console.log(res.error);
-    }
-  };
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
@@ -105,7 +83,7 @@ export default function LoginScreen() {
             <TouchableOpacity
               style={styles.loginButton}
               activeOpacity={0.85}
-              onPress={handleLogin}
+              onPress={() => router.replace("/(tabs)")}
             >
               <Text style={styles.loginButtonText}>Login</Text>
             </TouchableOpacity>

@@ -13,9 +13,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MessageBubble from "../components/chat/MessageBubble.tsx";
+import MessageBubble from "../components/chat/MessageBubble";
 import { Message } from "../components/chat/Message";
-import ChatInput from "../components/chat/ChatInput.tsx";
+import ChatInput from "../components/chat/ChatInput";
 import {
   getHistoryPage,
   getLatestUserEmotionLabel,
