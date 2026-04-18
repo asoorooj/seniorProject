@@ -11,11 +11,7 @@ class User(db.Model):
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(256), nullable=False)
 
-    # CONSENT
-    consent_chat = db.Column(db.Boolean, default=False, nullable=False)
-    consent_image = db.Column(db.Boolean, default=False, nullable=False)
-    consent_audio = db.Column(db.Boolean, default=False, nullable=False)
-    consent_timestamp = db.Column(db.DateTime, nullable=True)
+    
 
     # EVALUATION PREFERENCES
     pref_eval_face = db.Column(db.Boolean, default=True, nullable=False)

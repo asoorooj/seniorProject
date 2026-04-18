@@ -57,11 +57,6 @@ def _user_to_dict(user):
         "id": user.id,
         "external_id": user.external_id,
         "created_at": user.created_at.isoformat(),
-        "consent": {
-            "consent_chat": user.consent_chat,
-            "consent_image": user.consent_image,
-            "consent_audio": user.consent_audio,
-        },
         "preferences": {
             "eval_face": user.pref_eval_face,
             "eval_audio": user.pref_eval_audio,
@@ -146,6 +141,7 @@ def get_current_user():
     return jsonify({
         "user": {
             "id": user.id,
+            "email": user.email,
             "external_id": user.external_id,
             "created_at": user.created_at.isoformat()
         }
@@ -219,35 +215,7 @@ def update_user_preferences(user_id):
         },
     ), 200
 
-@api_bp.put("/users/consent")
 
-def update_consent():
-    user = payload["sub"]
-    payload = request.get_json(silent=True) or {}
-
-    # Allowed fields only (VERY IMPORTANT)
-    allowed_fields = ["consent_chat", "consent_image", "consent_audio"]
-
-    updated = False
-
-    for field in allowed_fields:
-        if field in payload:
-            setattr(user, field, bool(payload[field]))
-            updated = True
-
-    if not updated:
-        return jsonify({"error": "no valid fields provided"}), 400
-
-    db.session.commit()
-
-    return jsonify({
-        "message": "consent updated",
-        "consent": {
-            "consent_chat": user.consent_chat,
-            "consent_image": user.consent_image,
-            "consent_audio": user.consent_audio,
-        }
-    }), 200
 
 @api_bp.delete("/users/<int:user_id>")
 @auth_required

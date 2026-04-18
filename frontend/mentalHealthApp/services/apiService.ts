@@ -47,11 +47,14 @@ export async function fetchChatHistory(params: {
   if (query.length > 0) {
     url += `?${query.join("&")}`;
   }
+  const headers = {
+    "Authorization": `Bearer ${await AsyncStorage.getItem("token")}`,
+    "Content-Type": "application/json"
+  };
 
   console.log("[api] FINAL URL:", url); // 🔥 debug
 
-  const res = await fetch(url);
-
+  const res = await fetch(url, { headers });
   if (!res.ok) throw { status: res.status };
 
   return res.json();

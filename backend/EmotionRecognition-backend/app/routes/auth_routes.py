@@ -16,10 +16,7 @@ def register():
     email = (data.get("email") or "").strip().lower()
     password = (data.get("password") or "").strip()
 
-    # CONSENT
-    consent_chat = data.get("consent_chat", False)
-    consent_image = data.get("consent_image", False)
-    consent_audio = data.get("consent_audio", False)
+    
 
     if not email or not password:
         return jsonify({"error": "email and password are required"}), 400
@@ -36,9 +33,6 @@ def register():
     user = User(
         external_id=str(uuid.uuid4()),
         email=email,
-        consent_chat=consent_chat,
-        consent_image=consent_image,
-        consent_audio=consent_audio,
         consent_timestamp=datetime.utcnow()
     )
 
@@ -56,9 +50,8 @@ def register():
             "id": user.id,
             "email": user.email,
             "external_id": user.external_id,
-            "consent_chat": user.consent_chat,
-            "consent_image": user.consent_image,
-            "consent_audio": user.consent_audio
+            "consent_timestamp": user.consent_timestamp.isoformat() if user.consent_timestamp else None,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
         },
         "token": token
     }), 201
