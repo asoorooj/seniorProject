@@ -15,6 +15,7 @@ import { useRouter } from "expo-router";
 import { loginUser, saveToken } from "../constants/api";
 import { setCurrentUserId } from "@/services/db";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { persistAuthSession } from "@/services/db";
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -31,6 +32,12 @@ export default function LoginScreen() {
       const userId = res.user_id.toString();
       await AsyncStorage.setItem("user_id", userId);
       setCurrentUserId(res.user_id);
+      try {
+        await persistAuthSession(res.user, res.user_id);
+        console.log("persistAuthSession done ✅");
+      } catch (e) {
+        console.log("persistAuthSession FAILED ❌", e); 
+      }
       router.replace("/login");
       router.replace("/(tabs)");
       const token = await AsyncStorage.getItem("token");

@@ -98,7 +98,13 @@ def login():
         "user": {
             "id": user.id,
             "email": user.email,
-            "external_id": user.external_id
+            "external_id": user.external_id,
+            "consent_timestamp": user.consent_timestamp.isoformat() if user.consent_timestamp else None,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "pref_eval_face": 1,
+            "pref_eval_image": 1,            
+            "pref_eval_audio": 1,
+
         },
         "access_token": token,
         "user_id": user.id

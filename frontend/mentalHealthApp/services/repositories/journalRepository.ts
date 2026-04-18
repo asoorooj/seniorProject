@@ -23,10 +23,11 @@ function maxScore(scores: Record<string, unknown> | null | undefined): number {
   return Math.round(maxVal * 100);
 }
 
-function safeJsonParse<T>(value: string | null): T | null {
-  if (!value) return null;
+function safeJsonParse<T>(value: any): T | null {
+  if (value == null) return null;
+  if (typeof value === "object") return value as T;
   try {
-    return JSON.parse(value) as T;
+    return JSON.parse(String(value)) as T;
   } catch {
     return null;
   }
@@ -37,54 +38,89 @@ export async function upsertServerEntries(
   userId: number = getCurrentUserId()
 ) {
   await initDb();
-  const nowIso = new Date().toISOString();
+
   for (const entry of evaluations) {
     const evaluation = entry.evaluation ?? {};
-    const serverId = evaluation.id ?? null;
-    if (!serverId) continue;
+    const evaluationId = Number(evaluation.id ?? 0);
+    if (!evaluationId) continue;
+
     await executeSqlAsync(
-      `INSERT INTO journal_entries
-        (server_id, user_id, timestamp, mood, score, label, scores_json,
-         face_label, face_scores_json, voice_label, voice_scores_json,
-         text_label, text_scores_json, suggestion, journal_text, tip, synced, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-       ON CONFLICT(server_id) DO UPDATE SET
-         timestamp=excluded.timestamp,
-         mood=excluded.mood,
-         score=excluded.score,
-         label=excluded.label,
-         scores_json=excluded.scores_json,
-         face_label=excluded.face_label,
-         face_scores_json=excluded.face_scores_json,
-         voice_label=excluded.voice_label,
-         voice_scores_json=excluded.voice_scores_json,
-         text_label=excluded.text_label,
-         text_scores_json=excluded.text_scores_json,
-         suggestion=excluded.suggestion,
-         journal_text=excluded.journal_text,
-         tip=excluded.tip,
-         synced=1,
-         updated_at=excluded.updated_at;`,
+      `INSERT INTO evaluations
+        (id, user_id, timestamp, label, scores, suggestion, synced)
+       VALUES (?, ?, ?, ?, ?, ?, 1)
+       ON CONFLICT(id) DO UPDATE SET
+        user_id=excluded.user_id,
+        timestamp=excluded.timestamp,
+        label=excluded.label,
+        scores=excluded.scores,
+        suggestion=excluded.suggestion,
+        synced=1;`,
       [
-        serverId,
+        evaluationId,
         userId,
-        evaluation.timestamp ?? nowIso,
-        evaluation.label ?? "unknown",
-        maxScore(evaluation.scores),
+        evaluation.timestamp ?? new Date().toISOString(),
         evaluation.label ?? "unknown",
         JSON.stringify(evaluation.scores ?? {}),
-        entry.image?.label ?? "unknown",
-        JSON.stringify(entry.image?.scores ?? {}),
-        entry.audio?.label ?? "unknown",
-        JSON.stringify(entry.audio?.scores ?? {}),
-        entry.text?.label ?? "unknown",
-        JSON.stringify(entry.text?.scores ?? {}),
         evaluation.suggestion ?? null,
-        evaluation.journal_text ?? null,
-        evaluation.tip ?? null,
-        nowIso,
       ]
     );
+
+    if (entry.audio) {
+      await executeSqlAsync(
+        `INSERT INTO audio_evaluations
+          (id, evaluation_id, label, scores, data, synced)
+         VALUES (?, ?, ?, ?, NULL, 1)
+         ON CONFLICT(evaluation_id) DO UPDATE SET
+          id=excluded.id,
+          label=excluded.label,
+          scores=excluded.scores,
+          synced=1;`,
+        [
+          Number(entry.audio.id ?? evaluationId),
+          evaluationId,
+          entry.audio.label ?? "unknown",
+          JSON.stringify(entry.audio.scores ?? {}),
+        ]
+      );
+    }
+
+    if (entry.image) {
+      await executeSqlAsync(
+        `INSERT INTO image_evaluations
+          (id, evaluation_id, label, scores, data, synced)
+         VALUES (?, ?, ?, ?, NULL, 1)
+         ON CONFLICT(evaluation_id) DO UPDATE SET
+          id=excluded.id,
+          label=excluded.label,
+          scores=excluded.scores,
+          synced=1;`,
+        [
+          Number(entry.image.id ?? evaluationId),
+          evaluationId,
+          entry.image.label ?? "unknown",
+          JSON.stringify(entry.image.scores ?? {}),
+        ]
+      );
+    }
+
+    if (entry.text) {
+      await executeSqlAsync(
+        `INSERT INTO text_evaluations
+          (id, evaluation_id, label, scores, data, synced)
+         VALUES (?, ?, ?, ?, NULL, 1)
+         ON CONFLICT(evaluation_id) DO UPDATE SET
+          id=excluded.id,
+          label=excluded.label,
+          scores=excluded.scores,
+          synced=1;`,
+        [
+          Number(entry.text.id ?? evaluationId),
+          evaluationId,
+          entry.text.label ?? "unknown",
+          JSON.stringify(entry.text.scores ?? {}),
+        ]
+      );
+    }
   }
 }
 
@@ -96,38 +132,56 @@ export async function getEntriesForRange(params: {
   const { start, end, userId = getCurrentUserId() } = params;
   await initDb();
   const result = await executeSqlAsync(
-    `SELECT * FROM journal_entries
-     WHERE user_id = ? AND timestamp >= ? AND timestamp < ?
-     ORDER BY datetime(timestamp) ASC;`,
+    `SELECT
+        e.id,
+        e.timestamp,
+        e.label,
+        e.scores,
+        e.suggestion,
+        i.label AS image_label,
+        i.scores AS image_scores,
+        a.label AS audio_label,
+        a.scores AS audio_scores,
+        t.label AS text_label,
+        t.scores AS text_scores
+     FROM evaluations e
+     LEFT JOIN image_evaluations i ON i.evaluation_id = e.id
+     LEFT JOIN audio_evaluations a ON a.evaluation_id = e.id
+     LEFT JOIN text_evaluations t ON t.evaluation_id = e.id
+     WHERE e.user_id = ? AND e.timestamp >= ? AND e.timestamp < ?
+     ORDER BY datetime(e.timestamp) ASC, e.id ASC;`,
     [userId, start.toISOString(), end.toISOString()]
   );
+
   const rows = result.rows as any;
   const items: RawEntry[] = [];
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows.item(i);
-    const faceScores = safeJsonParse<Record<string, number>>(row.face_scores_json);
-    const voiceScores = safeJsonParse<Record<string, number>>(row.voice_scores_json);
-    const textScores = safeJsonParse<Record<string, number>>(row.text_scores_json);
+    const evaluationScores = safeJsonParse<Record<string, number>>(row.scores);
+    const faceScores = safeJsonParse<Record<string, number>>(row.image_scores);
+    const voiceScores = safeJsonParse<Record<string, number>>(row.audio_scores);
+    const textScores = safeJsonParse<Record<string, number>>(row.text_scores);
+
     items.push({
-      id: String(row.server_id ?? row.local_id),
+      id: String(row.id),
       timestamp: row.timestamp,
-      mood: row.label ?? row.mood ?? "unknown",
-      score: row.score ?? maxScore(safeJsonParse(row.scores_json)),
+      mood: row.label ?? "unknown",
+      score: maxScore(evaluationScores),
       face: {
         score: maxScore(faceScores),
-        label: row.face_label ?? "unknown",
+        label: row.image_label ?? "unknown",
       },
       voice: {
         score: maxScore(voiceScores),
-        label: row.voice_label ?? "unknown",
+        label: row.audio_label ?? "unknown",
       },
       text: {
         score: maxScore(textScores),
         label: row.text_label ?? "unknown",
       },
-      journal_text: row.journal_text ?? null,
+      journal_text: null,
       suggestion: row.suggestion ?? null,
-      tip: row.tip ?? null,
+      tip: null,
     });
   }
   return items;
@@ -151,7 +205,31 @@ export async function trimToRecentWeeks(
 ) {
   await initDb();
   await executeSqlAsync(
-    `DELETE FROM journal_entries
+    `DELETE FROM audio_evaluations
+     WHERE evaluation_id IN (
+       SELECT id FROM evaluations
+       WHERE user_id = ? AND synced = 1 AND timestamp < ?
+     );`,
+    [userId, cutoffStart.toISOString()]
+  );
+  await executeSqlAsync(
+    `DELETE FROM image_evaluations
+     WHERE evaluation_id IN (
+       SELECT id FROM evaluations
+       WHERE user_id = ? AND synced = 1 AND timestamp < ?
+     );`,
+    [userId, cutoffStart.toISOString()]
+  );
+  await executeSqlAsync(
+    `DELETE FROM text_evaluations
+     WHERE evaluation_id IN (
+       SELECT id FROM evaluations
+       WHERE user_id = ? AND synced = 1 AND timestamp < ?
+     );`,
+    [userId, cutoffStart.toISOString()]
+  );
+  await executeSqlAsync(
+    `DELETE FROM evaluations
      WHERE user_id = ? AND synced = 1 AND timestamp < ?;`,
     [userId, cutoffStart.toISOString()]
   );

@@ -173,7 +173,7 @@ function WaveformBars({ active }: { active: boolean }) {
 }
 
 // ─── Screen 1: Intro ──────────────────────────────────────────────────────────
-function IntroScreen({ onBegin }: { onBegin: () => void }) {
+function IntroScreen({ onBegin, onSkip }: { onBegin: () => void; onSkip: () => void; }) {
   const pulseScale   = useRef(new Animated.Value(1)).current;
   const pulseOpacity = useRef(new Animated.Value(0.45)).current;
 
@@ -221,6 +221,9 @@ function IntroScreen({ onBegin }: { onBegin: () => void }) {
             </CircleFrame>
           </TouchableOpacity>
         </View>
+        <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={{ marginTop: 40 }}>
+          <Text style={styles.rerecordText}>Skip this step</Text>
+        </TouchableOpacity>
       </View>
     </FadeInView>
   );
@@ -307,10 +310,12 @@ function RecordingScreen({ onStop }: { onStop: (uri: string) => void }) {
 function LoadingScreen({
   uri,
   evaluationId,
+  sessionId,
   onComplete,
 }: {
   uri: string;
   evaluationId: number | null;
+  sessionId: number | null;
   onComplete: (result: EmotionResult) => void;
 }) {
   const progress = useRef(new Animated.Value(0)).current;
@@ -322,7 +327,7 @@ function LoadingScreen({
       useNativeDriver: false,
     }).start();
 
-    if (evaluationId === null) return;
+    if (evaluationId === null || !sessionId) return;
     analyzeAudioClip(uri, evaluationId).then(result => {
       setTimeout(() => onComplete(result), 2800);
     });
@@ -361,12 +366,10 @@ function ResultScreen({
   result,
   onContinue,
   onRerecord,
-  onSkip,
 }: {
   result: EmotionResult | null;
   onContinue: () => void;
-  onRerecord: () => void;
-  onSkip: () => void;
+  onRerecord: () => void;  
 }) {
   const rawEmotion = result?.emotion ?? 'Unknown';
   const emotion    = EMOTION_DISPLAY[rawEmotion] ?? rawEmotion.toLowerCase();
@@ -404,9 +407,6 @@ function ResultScreen({
         <TouchableOpacity style={styles.ctaButton} onPress={onContinue} activeOpacity={0.85}>
           <Text style={styles.ctaButtonText}>{"On to Your Words"}</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={{ marginTop: 14 }}>
-          <Text style={styles.rerecordText}>Skip this step</Text>
-        </TouchableOpacity>
         <TouchableOpacity onPress={onRerecord} activeOpacity={0.7} style={{ marginTop: 14 }}>
           <Text style={styles.rerecordText}>Re-record</Text>
         </TouchableOpacity>
@@ -420,6 +420,7 @@ export default function AudioSurveyScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     evaluationId?: string;
+    sessionId?: string;
     faceLabel?: string;
     faceConf?: string;
     faceSkipped?: string;
@@ -428,6 +429,7 @@ export default function AudioSurveyScreen() {
     prefText?: string;
   }>();
   const evaluationId = params.evaluationId ? Number(params.evaluationId) : null;
+  const sessionId = params.sessionId ? Number(params.sessionId) : null;
   const faceLabel    = params.faceLabel ?? 'Neutral';
   const faceConf     = params.faceConf  ?? '0';
   const faceSkipped  = params.faceSkipped ?? 'false';
@@ -448,6 +450,7 @@ export default function AudioSurveyScreen() {
         pathname: '/survey-text' as any,
         params: {
           evaluationId: String(evaluationId),
+          sessionId: sessionId ? String(sessionId) : '',
           faceLabel,
           faceConf,
           faceSkipped,
@@ -463,6 +466,7 @@ export default function AudioSurveyScreen() {
       pathname: '/survey-results' as any,
       params: {
         evaluationId: String(evaluationId),
+        sessionId: sessionId ? String(sessionId) : '',
         faceLabel,
         faceConf,
         faceSkipped,
@@ -483,7 +487,9 @@ export default function AudioSurveyScreen() {
   const handleBack = () => {
     if (step === 'intro') {
       if (evaluationId !== null) {
-        cancelEvaluation(evaluationId).catch(() => {});
+        if (sessionId) {
+          cancelEvaluation(evaluationId, sessionId).catch(() => {});
+        }
       }
       router.back();
     }
@@ -519,12 +525,13 @@ export default function AudioSurveyScreen() {
       <SurveyHeader onBack={handleBack} />
       <StepTabs />
 
-      {step === 'intro'     && <IntroScreen    onBegin={handleBegin} />}
+      {step === 'intro'     && <IntroScreen    onBegin={handleBegin} onSkip={() => routeAfterAudio({ audioSkipped: 'true' })}/>}
       {step === 'recording' && <RecordingScreen onStop={handleStop} />}
       {step === 'loading'   && (
         <LoadingScreen
           uri={uri}
           evaluationId={evaluationId}
+          sessionId={sessionId}
           onComplete={res => { setResult(res); setStep('result'); }}
         />
       )}
@@ -536,8 +543,7 @@ export default function AudioSurveyScreen() {
               audioLabel: result?.emotion ?? 'Neutral',
               audioConf: String(Math.round((result?.confidence ?? 0) * 100)),
             })
-          }
-          onSkip={() => routeAfterAudio({ audioSkipped: 'true' })}
+          }          
           onRerecord={handleRerecord}
         />
       )}

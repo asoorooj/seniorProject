@@ -52,9 +52,12 @@ function formatNow(): string {
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
-async function callEndEvaluation(evaluationId: number): Promise<{evaluation_id:number; label:string; status:string; suggestion:string; scores:string;} | null> {
+async function callEndEvaluation(
+  evaluationId: number,
+  sessionId: number
+): Promise<{evaluation_id:number; label:string; status:string; suggestion:string; scores:string;} | null> {
   try {
-    const data = await endEvaluation(evaluationId);
+    const data = await endEvaluation(evaluationId, sessionId);
     console.log('Fusion result:', data);
     return data;
   } catch (err) {
@@ -112,6 +115,7 @@ export default function ResultsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     evaluationId?: string;
+    sessionId?: string;
     faceLabel?: string;
     faceConf?: string;
     faceSkipped?: string;
@@ -124,6 +128,7 @@ export default function ResultsScreen() {
   }>();
 
   const evaluationId = params.evaluationId ? Number(params.evaluationId) : null;
+  const sessionId = params.sessionId ? Number(params.sessionId) : null;
   const faceLabel    = params.faceLabel  ?? 'Neutral';
   const faceConf     = Number(params.faceConf  ?? 0);
   const faceSkipped  = params.faceSkipped === 'true';
@@ -134,22 +139,21 @@ export default function ResultsScreen() {
   const textConf     = Number(params.textConf  ?? 0);
   const textSkipped  = params.textSkipped === 'true';
 
-  const [fusionModelData, setFusionModelData] = useState< {evaluation_id:number; label:string; status:string; suggestion:string; scores:string;} | null>(null);
+  const [fusionModelData, setFusionModelData] = useState< {evaluation_id:number; label:string; status:string; suggestion:string; scores:string; error?:string} | null>(null);
   const [loading,     setLoading]     = useState(true);
 
   const heroOpacity  = useRef(new Animated.Value(0)).current;
   const heroScale    = useRef(new Animated.Value(0.96)).current;
   const btnOpacity   = useRef(new Animated.Value(0)).current;
 
-  useEffect(()=>console.log("here",fusionModelData),[fusionModelData])
-
   useEffect(() => {
     const run = async () => {
-      const data = evaluationId !== null
-        ? await callEndEvaluation(evaluationId)
+      const data = evaluationId !== null && sessionId
+        ? await callEndEvaluation(evaluationId, sessionId)
         : null;
       setFusionModelData(data);
       setLoading(false);
+      
 
       Animated.parallel([
         Animated.timing(heroOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
@@ -160,7 +164,7 @@ export default function ResultsScreen() {
     run();
   }, []);
 
-  const moodPhrase = FUSION_PHRASE[fusionModelData?.label ?? 'Neutral'] ?? 'Mostly Calm';
+  const moodPhrase = fusionModelData?.label ? FUSION_PHRASE[fusionModelData?.label] : 'No Data';
   const completedModalities = [
     !faceSkipped && (faceConf > 0 || params.faceLabel) ? {
       icon: "camera" as const,
@@ -264,7 +268,7 @@ export default function ResultsScreen() {
 
       {/* CTA */}
       <Animated.View style={[styles.ctaWrap, { opacity: btnOpacity }]}>
-        <TouchableOpacity
+        {!fusionModelData?.error && <TouchableOpacity
           style={styles.ctaButton}
           onPress={() => router.replace('/(tabs)/journal')}
           activeOpacity={0.85}
@@ -277,7 +281,7 @@ export default function ResultsScreen() {
           >
             <Text style={styles.ctaText}>Save to My Journal</Text>
           </LinearGradient>
-        </TouchableOpacity>
+        </TouchableOpacity> }
       </Animated.View>
     </SafeAreaView>
   );

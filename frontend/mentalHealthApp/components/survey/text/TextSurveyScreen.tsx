@@ -108,9 +108,11 @@ function StepTabs() {
 function PromptSelectScreen({
   prompts,
   onSelect,
+  onSkip,
 }: {
   prompts: string[];
   onSelect: (prompt: string) => void;
+  onSkip: () => void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -123,7 +125,7 @@ function PromptSelectScreen({
     <FadeInView>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingBottom: 24, display:'flex', justifyContent:'center', alignItems:'center'}}
       >
         <View style={styles.textZone}>
           <Text style={styles.title}>{"Let's Read Your Words"}</Text>
@@ -155,6 +157,9 @@ function PromptSelectScreen({
           <Text style={[styles.promptText, styles.promptTextMuted, selected === '' && styles.promptTextSelected]}>
             or just write freely
           </Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={{ marginTop: 14 }}>
+          <Text style={styles.rewriteText}>Skip this step</Text>
         </TouchableOpacity>
       </ScrollView>
     </FadeInView>
@@ -242,10 +247,12 @@ const ANALYSIS_DURATION = 3200;
 function AnalyzingScreen({
   text,
   evaluationId,
+  sessionId,
   onComplete,
 }: {
   text: string;
   evaluationId: number | null;
+  sessionId: number | null;
   onComplete: (result: EmotionResult) => void;
 }) {
   const [phraseIndex, setPhraseIndex] = useState(0);
@@ -275,7 +282,7 @@ function AnalyzingScreen({
       }, interval * i));
     });
 
-    if (evaluationId !== null) {
+    if (evaluationId !== null && sessionId) {
       analyzeTextEntry(text, evaluationId).then(result => {
         setTimeout(() => onComplete(result), ANALYSIS_DURATION);
       });
@@ -313,13 +320,11 @@ function AnalyzingScreen({
 function ResultScreen({
   result,
   onFinish,
-  onRewrite,
-  onSkip,
+  onRewrite
 }: {
   result: EmotionResult | null;
   onFinish: () => void;
   onRewrite: () => void;
-  onSkip: () => void;
 }) {
   const checkScale = useRef(new Animated.Value(0)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
@@ -374,9 +379,6 @@ function ResultScreen({
             <Text style={styles.ctaButtonText}>See Full Results</Text>
           </LinearGradient>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={{ marginTop: 14 }}>
-          <Text style={styles.rewriteText}>Skip this step</Text>
-        </TouchableOpacity>
         <TouchableOpacity onPress={onRewrite} activeOpacity={0.7} style={{ marginTop: 14 }}>
           <Text style={styles.rewriteText}>Re-write</Text>
         </TouchableOpacity>
@@ -390,6 +392,7 @@ export default function TextSurveyScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     evaluationId?: string;
+    sessionId?: string;
     faceLabel?: string;
     faceConf?: string;
     faceSkipped?: string;
@@ -401,6 +404,7 @@ export default function TextSurveyScreen() {
     prefText?: string;
   }>();
   const evaluationId = params.evaluationId ? Number(params.evaluationId) : null;
+  const sessionId = params.sessionId ? Number(params.sessionId) : null;
   const faceLabel    = params.faceLabel  ?? 'Neutral';
   const faceConf     = params.faceConf   ?? '0';
   const faceSkipped  = params.faceSkipped ?? 'false';
@@ -425,6 +429,7 @@ export default function TextSurveyScreen() {
         pathname: '/survey-results' as any,
         params: {
           evaluationId: String(evaluationId),
+          sessionId: sessionId ? String(sessionId) : '',
           faceLabel,
           faceConf,
           faceSkipped,
@@ -440,7 +445,9 @@ export default function TextSurveyScreen() {
   const handleBack = () => {
     if (step === 'prompt-select') {
       if (evaluationId !== null) {
-        cancelEvaluation(evaluationId).catch(() => {});
+        if (sessionId) {
+          cancelEvaluation(evaluationId, sessionId).catch(() => {});
+        }
       }
       router.back();
     }
@@ -467,9 +474,10 @@ export default function TextSurveyScreen() {
   const handleFinish = () => {
     router.replace({
       pathname: '/survey-results' as any,
-      params: {
-        evaluationId: String(evaluationId),
-        faceLabel,
+        params: {
+          evaluationId: String(evaluationId),
+          sessionId: sessionId ? String(sessionId) : '',
+          faceLabel,
         faceConf,
         faceSkipped,
         audioLabel,
@@ -495,7 +503,24 @@ export default function TextSurveyScreen() {
       <StepTabs />
 
       {step === 'prompt-select' && (
-        <PromptSelectScreen prompts={prompts} onSelect={handlePromptSelect} />
+        <PromptSelectScreen prompts={prompts} onSelect={handlePromptSelect}           
+          onSkip={() =>
+              router.replace({
+                pathname: '/survey-results' as any,
+                params: {
+                  evaluationId: String(evaluationId),
+                  sessionId: sessionId ? String(sessionId) : '',
+                  faceLabel,
+                  faceConf,
+                  faceSkipped,
+                  audioLabel,
+                  audioConf,
+                  audioSkipped,
+                  textSkipped: 'true',
+                },
+              })
+            }
+          />
       )}
       {step === 'writing' && (
         <WritingScreen prompt={prompt} onSubmit={handleSubmit} />
@@ -504,6 +529,7 @@ export default function TextSurveyScreen() {
         <AnalyzingScreen
           text={text}
           evaluationId={evaluationId}
+          sessionId={sessionId}
           onComplete={handleAnalysisComplete}
         />
       )}
@@ -511,21 +537,6 @@ export default function TextSurveyScreen() {
         <ResultScreen
           result={result}
           onFinish={handleFinish}
-          onSkip={() =>
-            router.replace({
-              pathname: '/survey-results' as any,
-              params: {
-                evaluationId: String(evaluationId),
-                faceLabel,
-                faceConf,
-                faceSkipped,
-                audioLabel,
-                audioConf,
-                audioSkipped,
-                textSkipped: 'true',
-              },
-            })
-          }
           onRewrite={handleRewrite}
         />
       )}

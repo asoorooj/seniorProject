@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { ProfileCard } from '@/components/profile/ProfileCard';
 import { AvgWellbeingCard } from '@/components/profile/AvgWellbeingCard';
 import { EmotionalProfileCard, EmotionTag } from '@/components/profile/EmotionalProfileCard';
@@ -32,8 +33,10 @@ import {
 } from '@/services/repositories/profileRepository';
 import {
   clearLocalData,
-  syncProfileCaches,
+  syncAllUnsynced,
 } from '@/services/sync/syncController';
+import { TEST_USER } from '@/components/userTest';
+import { useAuth } from '@/hooks/useAuth';
 
 // Derive isToday from the current day of the week (0=Sun, 1=Mon, ..., 6=Sat)
 const DAYS: DayScore['day'][] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -75,9 +78,12 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   eval_text: true,
 };
 
-const CURRENT_USER_ID = 1;
+const CURRENT_USER_ID = TEST_USER.userId;
 
 export default function ProfileScreen() {
+  const router = useRouter();
+  const { user: authUser, sessionId, setSessionId, setUser: setAuthUser } = useAuth();
+  const currentUserId = authUser?.id ?? CURRENT_USER_ID;
   const [user, setUser] = useState<UserProfile>(PLACEHOLDER_USER);
   const [scores, setScores] = useState<DayScore[]>(PLACEHOLDER_SCORES);
   const [emotions, setEmotions] = useState<EmotionTag[]>(PLACEHOLDER_EMOTIONS);
@@ -90,29 +96,26 @@ export default function ProfileScreen() {
   const fetchData = useCallback(async () => {
     setError(false);
     try {
-      const [cachedProfile, cachedScores, cachedEmotions] = await Promise.all([
+      if (sessionId) {
+        await syncAllUnsynced(sessionId, "action");
+        const currentUser = await fetchCurrentUser(currentUserId, sessionId);
+        if (currentUser?.user?.preferences) {
+          setPreferences(currentUser.user.preferences);
+        }
+      }
+      const [localProfile, localScores, localEmotions] = await Promise.all([
         getProfileCache<UserProfile>(),
         getScoresCache<DayScore[]>(),
         getEmotionsCache<EmotionTag[]>(),
       ]);
-      if (cachedProfile) setUser(cachedProfile);
-      if (cachedScores) setScores(cachedScores);
-      if (cachedEmotions) setEmotions(cachedEmotions);
-
-      const currentUser = await fetchCurrentUser(CURRENT_USER_ID);
-      if (currentUser?.user?.preferences) {
-        setPreferences(currentUser.user.preferences);
-      }
-
-      const synced = await syncProfileCaches();
-      if (synced?.profile) setUser(synced.profile);
-      if (synced?.scores) setScores(synced.scores);
-      if (synced?.emotions) setEmotions(synced.emotions);
+      if (localProfile) setUser(localProfile);
+      if (localScores) setScores(localScores);
+      if (localEmotions) setEmotions(localEmotions);
     } catch (err) {
       console.error('Profile fetch failed:', err);
       setError(true);
     }
-  }, []);
+  }, [currentUserId, sessionId]);
 
   useEffect(() => {
     setLoading(true);
@@ -138,20 +141,30 @@ export default function ProfileScreen() {
     setPreferences(nextPreferences);
     setSavingPreferences(true);
 
-    const updated = await updateUserPreferences(CURRENT_USER_ID, nextPreferences);
+    if (!sessionId) {
+      setPreferences(preferences);
+      setSavingPreferences(false);
+      return;
+    }
+    const updated = await updateUserPreferences(sessionId, currentUserId, nextPreferences);
     if (!updated?.preferences) {
       setPreferences(preferences);
+    } else {
+      await syncAllUnsynced(sessionId, "action");
     }
 
     setSavingPreferences(false);
-  }, [preferences]);
+  }, [preferences, sessionId, currentUserId]);
 
   const handleSignOut = useCallback(() => {
     clearLocalData().catch(() => {});
-    logout().catch(() => {});
-    // TODO: clear stored auth token here (e.g. AsyncStorage.removeItem('token'))
-    // then navigate to login: router.replace('/login')
-  }, []);
+    if (sessionId) {
+      logout(sessionId).catch(() => {});
+    }
+    setSessionId(null);
+    setAuthUser(null);
+    router.replace('/login');
+  }, [sessionId, setSessionId, setAuthUser, router]);
 
   if (loading) {
     return (
