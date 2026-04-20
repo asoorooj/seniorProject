@@ -246,17 +246,17 @@ export async function sendChatMessage(params: {
 
 export async function fetchEvaluationsByDate(params: {
   userId?: number;
-  jwt: string;
+  jwt?: string;
   startDate: string;
 }) {
   const { userId, startDate, jwt } = params;
-  // const token = await AsyncStorage.getItem("token");
+  const token = await AsyncStorage.getItem("token");
 
   const res = await fetch(
     `${API_BASE}/evaluation/by-date?user_id=${userId ? userId : await AsyncStorage.getItem("id")}&start_date=${startDate}`,
     {
       headers: {
-        "Authorization": `Bearer ${jwt}`,
+        "Authorization": `Bearer ${jwt ? jwt : token}`,
         "Content-Type": "application/json"
       }
     }

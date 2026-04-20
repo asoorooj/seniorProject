@@ -284,8 +284,7 @@ export function useJournalData() {
                 if (local.length > 0) {
                     rawEntries = local;
                 } else {
-                    const data = await fetchEvaluationsByDate({
-                        jwt,
+                    const data = await fetchEvaluationsByDate({                        
                         userId: user?.id, //See how to ensure userId is not null, either force an refetch of user data 
                         startDate: weekStartDateString(weekStart),
                     });
@@ -310,7 +309,7 @@ export function useJournalData() {
             setWeekLoading(false);
         };
 
-        run();
+        run(true);
         return () => { cancelled = true; };
     }, [weekStart]);
 
