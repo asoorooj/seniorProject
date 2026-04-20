@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } fr
 import { capsule } from "@/assets/styles/colors";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from "@/constants/api";
+import {fetchCurrentUser} from "@/services/apiService";
 
 type User = {
   id: number;
@@ -14,18 +15,22 @@ type Props = {
   onSignOut: () => void;
 };
 
+
 export function AccountCard({ onSignOut }: Props) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchUser();
+    fetchCurrentUser()
+      .then(setUser)
+      .catch(() => console.log("Failed to fetch user"))
+      .finally(() => setLoading(false));
   }, []);
 
   const fetchUser = async () => {
     try {
       const token = await AsyncStorage.getItem("token"); // or however you store it
-      const response = await fetch("http://{API_BASE}/user/me", {
+      const response = await fetch(`${API_BASE}/user/me`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -45,7 +50,14 @@ export function AccountCard({ onSignOut }: Props) {
       'You will be returned to the login screen.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign out', style: 'destructive', onPress: onSignOut },
+        { 
+          text: 'Sign out', 
+          style: 'destructive', 
+          onPress: async () => {
+            await AsyncStorage.removeItem("token"); // ✅ clear token
+            onSignOut(); // then navigate
+          }
+        },
       ]
     );
   };

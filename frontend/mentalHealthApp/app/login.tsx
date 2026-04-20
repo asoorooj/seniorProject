@@ -16,11 +16,14 @@ import { loginUser, saveToken } from "../constants/api";
 import { setCurrentUserId } from "@/services/db";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { persistAuthSession } from "@/services/db";
+import { useAuth } from "@/hooks/useAuth";
+
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const { setUser: setAuthUser, setSessionId } = useAuth();
 
   const handleLogin = async () => {
     const res = await loginUser(email, password);
@@ -31,7 +34,9 @@ export default function LoginScreen() {
       await saveToken(res.access_token);
       const userId = res.user_id.toString();
       await AsyncStorage.setItem("user_id", userId);
+      setAuthUser(res.user);
       setCurrentUserId(res.user_id);
+      setSessionId(res.user_id); 
       try {
         await persistAuthSession(res.user, res.user_id);
         console.log("persistAuthSession done ✅");

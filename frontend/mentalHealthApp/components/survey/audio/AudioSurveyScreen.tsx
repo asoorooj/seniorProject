@@ -327,7 +327,7 @@ function LoadingScreen({
       useNativeDriver: false,
     }).start();
 
-    if (evaluationId === null || !sessionId) return;
+    if (evaluationId === null) return;
     analyzeAudioClip(uri, evaluationId).then(result => {
       setTimeout(() => onComplete(result), 2800);
     });

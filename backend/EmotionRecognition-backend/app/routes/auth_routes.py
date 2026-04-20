@@ -31,6 +31,7 @@ def register():
     from datetime import datetime
 
     user = User(
+        
         external_id=str(uuid.uuid4()),
         email=email,
         consent_timestamp=datetime.utcnow()
@@ -46,12 +47,17 @@ def register():
 
     return jsonify({
         "message": "registered successfully",
+        "user_id": user.id,
         "user": {
             "id": user.id,
             "email": user.email,
             "external_id": user.external_id,
             "consent_timestamp": user.consent_timestamp.isoformat() if user.consent_timestamp else None,
             "created_at": user.created_at.isoformat() if user.created_at else None,
+            "consent_timestamp": user.consent_timestamp.isoformat() if user.consent_timestamp else None,
+            "pref_eval_face": user.pref_eval_face if user.pref_eval_face is not None else True,   # ✅
+            "pref_eval_audio": user.pref_eval_audio if user.pref_eval_audio is not None else True, # ✅
+            "pref_eval_text": user.pref_eval_text if user.pref_eval_text is not None else True,    # ✅
         },
         "token": token
     }), 201
@@ -97,6 +103,7 @@ def login():
             "pref_eval_face": 1,
             "pref_eval_image": 1,            
             "pref_eval_audio": 1,
+            
 
         },
         "access_token": token,

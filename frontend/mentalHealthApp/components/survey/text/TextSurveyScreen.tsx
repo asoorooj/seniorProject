@@ -282,7 +282,7 @@ function AnalyzingScreen({
       }, interval * i));
     });
 
-    if (evaluationId !== null && sessionId) {
+    if (evaluationId !== null) {
       analyzeTextEntry(text, evaluationId).then(result => {
         setTimeout(() => onComplete(result), ANALYSIS_DURATION);
       });

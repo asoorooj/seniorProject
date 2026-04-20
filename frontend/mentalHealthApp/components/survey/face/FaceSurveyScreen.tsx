@@ -390,8 +390,8 @@ export default function FaceSurveyScreen() {
 
   const ensureEvaluation = async () => {
     if (evaluationId !== null) return evaluationId;
-    if (!sessionId) return null;
-    const responseData: { evaluation_id?: number } = await startEvaluation(sessionId);
+    
+    const responseData: { evaluation_id?: number } = await startEvaluation(currentUserId);
     const nextEvaluationId = responseData?.evaluation_id ?? null;
     setEvaluationId(nextEvaluationId);
     return nextEvaluationId;

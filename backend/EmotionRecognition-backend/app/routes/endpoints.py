@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request
 from app.middleware.auth import auth_required
 from flask import g
+import requests
+import time
 
 from app.extensions import db
 from app.models.db_models import (
@@ -55,6 +57,7 @@ def _json_error(message, status_code=400):
 def _user_to_dict(user):
     return {
         "id": user.id,
+        "email": user.email,
         "external_id": user.external_id,
         "created_at": user.created_at.isoformat(),
         "preferences": {
@@ -451,6 +454,56 @@ def recieve_eval():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@api_bp.get("/home_insight")
+@auth_required
+def home_insight():
+    user = g.current_user
+    
+    today = datetime.utcnow()
+    week_ago = today - timedelta(days=7)
+
+    evaluations = Evaluation.query.filter(
+        Evaluation.user_id == user.id,
+        Evaluation.timestamp >= week_ago
+    ).all()
+
+    if not evaluations:
+        return jsonify({"insight": "Start scanning to get personalized insights!"}), 200
+
+    # Build summary for ollama
+    summary = []
+    for e in evaluations:
+        summary.append({
+            "day": e.timestamp.strftime("%A"),
+            "label": e.label,
+            "scores": e.scores
+        })
+
+    prompt = f"""
+You are a warm and empathetic emotional wellness assistant.
+Based on the following emotion scan data from the past week, write exactly 2 short friendly sentences summarizing the user's emotional patterns.
+Be specific to the data, detect change in emotions in the past week if any, encouraging, and conversational. Do not use bullet points or lists.
+
+Data: {summary}
+"""
+
+    try:
+        ollama_res = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "llama3",
+                "prompt": prompt,
+                "stream": False
+            },
+            timeout=15
+        )
+        insight = ollama_res.json().get("response", "").strip()
+    except Exception as e:
+        print("Ollama error:", e)
+        insight = "Keep scanning to unlock personalized insights!"
+
+    return jsonify({"insight": insight}), 200
     
 def _scores_with_raw(labels, probs, raw_label=None):
     scores = {lbl: float(prob) for lbl, prob in zip(labels, probs)}
@@ -695,34 +748,74 @@ def start_eval_text():
         "text_scores":text_eval.scores,
     })
 
+
 @api_bp.post("/startevaluation_audio")
 @auth_required
 def start_eval_audio():
-    payload = request.get_json(silent=True) or {}
-    user = g.current_user
-    evaluation_id = payload.get("evaluationId")
-    evaluation = Evaluation.query.get(evaluation_id)
-    if not evaluation or evaluation.user_id != user.id:
-        return jsonify({"error": "unauthorized"}), 403
+    # ✅ initialize everything at the top BEFORE try block
+    evaluation_id = None
+    audio_bytes = None
+    audio_file_suffix = ".wav"
+    pred = None
+    scores = None
+    db_saved = False
+
     try:
-        audio_bytes = None
-        audio_file_suffix = ".wav"
-        if request.mimetype and request.mimetype.startswith("multipart/form-data"):
+        print("content_type:", request.content_type)
+        print("form data:", request.form)
+        print("files:", request.files)
+
+        if request.content_type and "multipart/form-data" in request.content_type:
             audio_file = request.files.get("audio")
             if audio_file:
                 audio_bytes = audio_file.read()
                 _, ext = os.path.splitext(audio_file.filename or "")
                 if ext:
-                    audio_file_suffix = ext
+                    audio_file_suffix = ext.lower()
+            evaluation_id = request.form.get("evaluationId")  # ✅ from form
+
         elif request.is_json:
+            payload = request.get_json(silent=True) or {}
+            evaluation_id = payload.get("evaluationId")       # ✅ from json
             audio_b64 = payload.get("audio")
             if audio_b64:
                 audio_bytes = base64.b64decode(audio_b64)
-        pred, probs, _, _, vec = predict_audio_file(audio_bytes, file_suffix=audio_file_suffix)
+
+        print("audio_bytes length:", len(audio_bytes) if audio_bytes else None)
+        print("evaluation_id:", evaluation_id)
+        print("audio_file_suffix:", audio_file_suffix)
+
+        # ❗ SAFETY CHECKS
+        if not audio_bytes:
+            return jsonify({"status": "error", "message": "No audio provided"}), 400
+
+        if not evaluation_id:
+            return jsonify({"status": "error", "message": "evaluationId is required"}), 400
+
+        evaluation_id = int(evaluation_id)
+
+        _, error_response, error_status = _get_owned_evaluation_or_error(evaluation_id)
+        if error_response:
+            return error_response, error_status
+
+        # 🔥 M4A → WAV CONVERSION
+        if audio_file_suffix == ".m4a":
+            print("converting m4a to wav...")
+            audio_bytes = convert_m4a_bytes_to_wav_bytes(audio_bytes)
+            audio_file_suffix = ".wav"
+
+        # 🎯 RUN PREDICTION
+        pred, probs, _, _, vec = predict_audio_file(
+            audio_bytes,
+            file_suffix=audio_file_suffix
+        )
+
+        scores = _vector_to_scores_dict(vec)
+
         audio_eval = AudioEvalutations.query.filter_by(
             evaluation_id=evaluation_id
         ).first()
-        scores = _vector_to_scores_dict(vec)
+
         if audio_eval:
             audio_eval.label = pred
             audio_eval.scores = scores
@@ -735,19 +828,24 @@ def start_eval_audio():
                 data=None
             )
             db.session.add(audio_eval)
+
         db.session.flush()
         db.session.commit()
-    except Exception:
+        db_saved = True
+
+    except Exception as e:
         db.session.rollback()
-        return jsonify({
-            "status": "error",
-            "message": "failed to create an audio evaluation"
-        }), 500
+        print("ERROR in start_eval_audio:", str(e))
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
     return jsonify({
         "evaluation_id": evaluation_id,
-        "status": "succesfully created evaluation",
-        "audio_label":audio_eval.label,
-        "audio_scores":audio_eval.scores,
+        "status": "successfully ran audio evaluation",
+        "db_saved": db_saved,
+        "audio_label": pred,
+        "audio_scores": scores,
     })
 
 def _scores_to_fusion_vector(scores):
@@ -765,8 +863,6 @@ def end_evaluation():
     payload = request.get_json(silent=True) or {}
     evaluation_id = payload.get("evaluationId")
     user = g.current_user
-    if evaluation.user_id != user.id:
-        return jsonify({"error": "unauthorized"}), 403
     
     if not evaluation_id:
         return jsonify({"error": "evaluationId is required"}), 400
@@ -933,3 +1029,101 @@ def get_chat_history_endpoint():
 
     payload = get_chat_history(session_id, limit=limit, before_id=before_id)
     return jsonify(payload), 200
+
+def _forbidden():
+    return jsonify({"error": "forbidden"}), 403
+
+def _get_owned_evaluation_or_error(evaluation_id):
+    evaluation = Evaluation.query.get(evaluation_id)
+    if not evaluation:
+        return None, jsonify({"error": "evaluation not found"}), 404
+    if evaluation.user_id != g.current_user.id:
+        forbidden_response, forbidden_status = _forbidden()
+        return None, forbidden_response, forbidden_status
+    return evaluation, None, None
+
+
+def convert_m4a_bytes_to_wav_bytes(m4a_bytes: bytes) -> bytes:
+    print("convert function")
+    CLOUDCONVERT_API_KEY = os.getenv("CLOUDCONVERT_API_KEY")
+    
+    headers = {
+        "Authorization": f"Bearer {CLOUDCONVERT_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    # 1. Create job
+    job_payload = {
+        "tasks": {
+            "upload-my-file": {"operation": "import/upload"},
+            "convert-my-file": {
+                "operation": "convert",
+                "input": "upload-my-file",
+                "output_format": "wav"
+            },
+            "export-my-file": {
+                "operation": "export/url",
+                "input": "convert-my-file"
+            }
+        }
+    }
+
+    job_res = requests.post(
+        "https://api.cloudconvert.com/v2/jobs",
+        json=job_payload,
+        headers=headers
+    )
+    print("job creation:", job_res.status_code)
+    job = job_res.json()["data"]
+    job_id = job["id"]
+    tasks = job["tasks"]
+
+    # 2. Get upload URL from job creation response
+    upload_task = next(t for t in tasks if t["name"] == "upload-my-file")
+    upload_url = upload_task["result"]["form"]["url"]
+    upload_fields = upload_task["result"]["form"]["parameters"]
+
+    # 3. Upload file
+    upload_res = requests.post(
+        upload_url,
+        data=upload_fields,
+        files={"file": ("audio.m4a", m4a_bytes)}
+    )
+    print("upload status:", upload_res.status_code)
+    print("upload response:", upload_res.text)
+
+    if upload_res.status_code not in [200, 201, 204]:
+        raise Exception(f"Upload failed: {upload_res.status_code} {upload_res.text}")
+
+    # 4. Poll until job is finished
+    while True:
+        job_status = requests.get(
+            f"https://api.cloudconvert.com/v2/jobs/{job_id}",
+            headers=headers
+        ).json()["data"]
+
+        status = job_status["status"]
+        print("job status:", status)
+        print("tasks:", [(t["name"], t["status"]) for t in job_status["tasks"]])
+
+        if status == "finished":
+            break
+        if status == "error":
+            raise Exception("CloudConvert job failed")
+
+        time.sleep(2)
+
+    # 5. Get export URL
+    export_task = next(
+        t for t in job_status["tasks"]
+        if t["name"] == "export-my-file"
+    )
+    file_url = export_task["result"]["files"][0]["url"]
+    print("download url:", file_url)
+
+    # 6. Download WAV
+    wav_response = requests.get(file_url)
+    if wav_response.status_code != 200:
+        raise Exception("Failed to download WAV file")
+
+    return wav_response.content

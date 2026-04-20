@@ -57,7 +57,7 @@ async function callEndEvaluation(
   sessionId: number
 ): Promise<{evaluation_id:number; label:string; status:string; suggestion:string; scores:string;} | null> {
   try {
-    const data = await endEvaluation(evaluationId, sessionId);
+    const data = await endEvaluation(evaluationId);
     console.log('Fusion result:', data);
     return data;
   } catch (err) {

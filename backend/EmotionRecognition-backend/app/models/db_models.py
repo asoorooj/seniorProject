@@ -18,6 +18,8 @@ class User(db.Model):
     pref_eval_audio = db.Column(db.Boolean, default=True, nullable=False)
     pref_eval_text = db.Column(db.Boolean, default=True, nullable=False)
 
+    consent_timestamp = db.Column(db.DateTime, nullable=True)
+
     sessions = db.relationship("Session", backref="user", cascade="all, delete-orphan")
     evaluations = db.relationship("Evaluation", backref="user", cascade="all, delete-orphan")
 
