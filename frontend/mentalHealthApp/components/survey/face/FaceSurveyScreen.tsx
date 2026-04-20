@@ -16,9 +16,8 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import {
   analyzeFaceImage,
-
   fetchCurrentUser,
-  endEvaluation,
+  cancelEvaluation,
   startEvaluation,
   type UserPreferences,
 } from '@/services/apiService';
@@ -27,7 +26,6 @@ import {
   getNextModality,
   hasAnyEnabledModality,
 } from '@/services/evaluationFlow';
-import { TEST_USER } from '@/components/userTest';
 import { useAuth } from '@/hooks/useAuth';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -251,12 +249,10 @@ function CountdownScreen({ onCapture }: { onCapture: (base64: string) => void })
 function LoadingScreen({
   image,
   evaluationId,
-  sessionId,
   onComplete,
 }: {
   image: string;
   evaluationId: number | null;
-  sessionId: number | null;
   onComplete: (result: EmotionResult) => void;
 }) {
   const progress = useRef(new Animated.Value(0)).current;
@@ -269,7 +265,7 @@ function LoadingScreen({
       useNativeDriver: false,
     }).start();
 
-    if(evaluationId === null || !sessionId) return; //redirect home??
+    if(evaluationId === null) return; //redirect home??
     analyzeFaceImage(image, evaluationId).then(result => {
       // Wait at least 2.8s so the progress bar finishes before advancing
       setTimeout(() => {
@@ -361,7 +357,7 @@ function ResultScreen({
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function FaceSurveyScreen() {
   const router = useRouter();
-  const { user, sessionId } = useAuth();
+  const { user, jwt } = useAuth();
   const [step,          setStep]          = useState<FaceStep>('intro');
   const [capturedImage, setCapturedImage] = useState<string>('');
   const [result,        setResult]        = useState<EmotionResult | null>(null);
@@ -369,12 +365,12 @@ export default function FaceSurveyScreen() {
   const [evaluationId, setEvaluationId] = useState<number | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_EVALUATION_PREFERENCES);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
-  const currentUserId = user?.id ?? TEST_USER.userId;
+
 
   useEffect(() => {
     let mounted = true;
     const loadPreferences = async () => {
-      if (!sessionId) return;
+      if (!user) return;
       const currentUser = await fetchCurrentUser();
       if (!mounted) return;
       if (currentUser?.user?.preferences) {
@@ -386,7 +382,7 @@ export default function FaceSurveyScreen() {
     return () => {
       mounted = false;
     };
-  }, [currentUserId, sessionId]);
+  }, [user,jwt]);
 
   const ensureEvaluation = async () => {
     if (evaluationId !== null) return evaluationId;
@@ -407,11 +403,10 @@ export default function FaceSurveyScreen() {
       router.replace({
         pathname: '/survey-audio' as any,
         params: {
-          evaluationId: String(nextEvaluationId),
-          sessionId: sessionId ? String(sessionId) : '',
-          prefFace: String(nextPreferences.eval_face),
-          prefAudio: String(nextPreferences.eval_audio),
-          prefText: String(nextPreferences.eval_text),
+          evaluationId: nextEvaluationId,
+          prefFace: String(nextPreferences.pref_eval_image),
+          prefAudio: String(nextPreferences.pref_eval_audio),
+          prefText: String(nextPreferences.pref_eval_text),
           ...routeParams,
         },
       });
@@ -422,10 +417,9 @@ export default function FaceSurveyScreen() {
         pathname: '/survey-text' as any,
         params: {
           evaluationId: String(nextEvaluationId),
-          sessionId: sessionId ? String(sessionId) : '',
-          prefFace: String(nextPreferences.eval_face),
-          prefAudio: String(nextPreferences.eval_audio),
-          prefText: String(nextPreferences.eval_text),
+          prefFace: String(nextPreferences.pref_eval_image),
+          prefAudio: String(nextPreferences.pref_eval_audio),
+          prefText: String(nextPreferences.pref_eval_text),
           ...routeParams,
         },
       });
@@ -435,14 +429,17 @@ export default function FaceSurveyScreen() {
       pathname: '/survey-results' as any,
       params: {
           evaluationId: String(nextEvaluationId),
-          sessionId: sessionId ? String(sessionId) : '',
-          prefFace: String(nextPreferences.eval_face),
-        prefAudio: String(nextPreferences.eval_audio),
-        prefText: String(nextPreferences.eval_text),
+          prefFace: String(nextPreferences.pref_eval_image),
+        prefAudio: String(nextPreferences.pref_eval_audio),
+        prefText: String(nextPreferences.pref_eval_text),
         ...routeParams,
       },
     });
   };
+
+  useEffect(()=>{
+    ensureEvaluation();
+  },[]);
 
   useEffect(() => {
     if (!preferencesLoaded) return;
@@ -455,7 +452,7 @@ export default function FaceSurveyScreen() {
       return;
     }
 
-    if (!preferences.eval_face) {
+    if (!preferences.pref_eval_image) {
       ensureEvaluation().then((nextEvaluationId) => {
         routeAfterFace(nextEvaluationId, { faceSkipped: 'true' }, preferences);
       });
@@ -465,9 +462,7 @@ export default function FaceSurveyScreen() {
   const handleBack = () => {
     if (step === 'intro'){
       if (evaluationId !== null) {
-        if (sessionId) {
-          cancelEvaluation(evaluationId, sessionId).catch(() => {});
-        }
+        cancelEvaluation(evaluationId).catch(() => {});
         setEvaluationId(null);
       }
       router.back();
@@ -487,7 +482,6 @@ export default function FaceSurveyScreen() {
         return;
       }
     }
-    await ensureEvaluation();
     setStep('countdown');
   };
 
@@ -513,7 +507,6 @@ export default function FaceSurveyScreen() {
         <LoadingScreen
           image={capturedImage}
           evaluationId={evaluationId}
-          sessionId={sessionId}
           onComplete={res => { 
             
             setResult(res); setStep('result'); }}

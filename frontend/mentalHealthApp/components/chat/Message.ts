@@ -1,6 +1,6 @@
 export type MessageInit = {
   id?: number;
-  sessionId?: number;
+  userId?: number;
   isUser: boolean;
   textMessage: string;
   timestamp: Date;
@@ -10,7 +10,7 @@ export type MessageInit = {
 
 export class Message {
   id?: number;
-  sessionId?: number;
+  userId?: number;
   isUser: boolean;
   textMessage: string;
   timestamp: Date;
@@ -19,7 +19,7 @@ export class Message {
 
   constructor({
     id,
-    sessionId,
+    userId,
     isUser,
     textMessage,
     timestamp,
@@ -27,7 +27,7 @@ export class Message {
     status,
   }: MessageInit) {
     this.id = id;
-    this.sessionId = sessionId;
+    this.userId = userId;
     this.isUser = isUser;
     this.textMessage = textMessage;
     this.timestamp = timestamp;

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -12,8 +12,7 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { loginUser, saveToken } from "../constants/api";
-import { setCurrentUserId } from "@/services/db";
+import { getUser, loginUser, saveUser } from "../services/apiService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { persistAuthSession } from "@/services/db";
 import { useAuth } from "@/hooks/useAuth";
@@ -38,17 +37,21 @@ export default function LoginScreen() {
       setCurrentUserId(res.user_id);
       setSessionId(res.user_id); 
       try {
-        await persistAuthSession(res.user, res.user_id);
+        await saveUser(res);
         console.log("persistAuthSession done ✅");
       } catch (e) {
-        console.log("persistAuthSession FAILED ❌", e); 
+        console.warn("persistAuthSession FAILED ❌", e); 
       }
       router.replace("/login");
       router.replace("/(tabs)");
       const token = await AsyncStorage.getItem("token");
-      const user_id = await AsyncStorage.getItem("user_id");
+      const user_id = await AsyncStorage.getItem("id");
       console.log("SAVED TOKEN:", token);
-      console.log("UserId: ", userId);
+      console.log("UserId: ", user_id);
+
+      setJwt(token);
+      setUser(await getUser());
+
     } else {
       console.log(res.error);
     }

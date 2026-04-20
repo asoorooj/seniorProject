@@ -247,12 +247,10 @@ const ANALYSIS_DURATION = 3200;
 function AnalyzingScreen({
   text,
   evaluationId,
-  sessionId,
   onComplete,
 }: {
   text: string;
   evaluationId: number | null;
-  sessionId: number | null;
   onComplete: (result: EmotionResult) => void;
 }) {
   const [phraseIndex, setPhraseIndex] = useState(0);
@@ -392,7 +390,6 @@ export default function TextSurveyScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     evaluationId?: string;
-    sessionId?: string;
     faceLabel?: string;
     faceConf?: string;
     faceSkipped?: string;
@@ -404,7 +401,6 @@ export default function TextSurveyScreen() {
     prefText?: string;
   }>();
   const evaluationId = params.evaluationId ? Number(params.evaluationId) : null;
-  const sessionId = params.sessionId ? Number(params.sessionId) : null;
   const faceLabel    = params.faceLabel  ?? 'Neutral';
   const faceConf     = params.faceConf   ?? '0';
   const faceSkipped  = params.faceSkipped ?? 'false';
@@ -412,9 +408,9 @@ export default function TextSurveyScreen() {
   const audioConf    = params.audioConf  ?? '0';
   const audioSkipped = params.audioSkipped ?? 'false';
   const preferences: UserPreferences = {
-    eval_face: params.prefFace ? params.prefFace === 'true' : DEFAULT_EVALUATION_PREFERENCES.eval_face,
-    eval_audio: params.prefAudio ? params.prefAudio === 'true' : DEFAULT_EVALUATION_PREFERENCES.eval_audio,
-    eval_text: params.prefText ? params.prefText === 'true' : DEFAULT_EVALUATION_PREFERENCES.eval_text,
+    pref_eval_image: params.prefFace ? params.prefFace === 'true' : DEFAULT_EVALUATION_PREFERENCES.pref_eval_image,
+    pref_eval_audio: params.prefAudio ? params.prefAudio === 'true' : DEFAULT_EVALUATION_PREFERENCES.pref_eval_audio,
+    pref_eval_text: params.prefText ? params.prefText === 'true' : DEFAULT_EVALUATION_PREFERENCES.pref_eval_text,
   };
 
   const [step,    setStep]    = useState<TextStep>('prompt-select');
@@ -424,12 +420,11 @@ export default function TextSurveyScreen() {
   const [result,  setResult]  = useState<EmotionResult | null>(null);
 
   useEffect(() => {
-    if (!preferences.eval_text) {
+    if (!preferences.pref_eval_text) {
       router.replace({
         pathname: '/survey-results' as any,
         params: {
           evaluationId: String(evaluationId),
-          sessionId: sessionId ? String(sessionId) : '',
           faceLabel,
           faceConf,
           faceSkipped,
@@ -445,9 +440,7 @@ export default function TextSurveyScreen() {
   const handleBack = () => {
     if (step === 'prompt-select') {
       if (evaluationId !== null) {
-        if (sessionId) {
-          cancelEvaluation(evaluationId, sessionId).catch(() => {});
-        }
+        cancelEvaluation(evaluationId).catch(() => {});
       }
       router.back();
     }
@@ -476,7 +469,6 @@ export default function TextSurveyScreen() {
       pathname: '/survey-results' as any,
         params: {
           evaluationId: String(evaluationId),
-          sessionId: sessionId ? String(sessionId) : '',
           faceLabel,
         faceConf,
         faceSkipped,
@@ -509,7 +501,6 @@ export default function TextSurveyScreen() {
                 pathname: '/survey-results' as any,
                 params: {
                   evaluationId: String(evaluationId),
-                  sessionId: sessionId ? String(sessionId) : '',
                   faceLabel,
                   faceConf,
                   faceSkipped,
@@ -529,7 +520,6 @@ export default function TextSurveyScreen() {
         <AnalyzingScreen
           text={text}
           evaluationId={evaluationId}
-          sessionId={sessionId}
           onComplete={handleAnalysisComplete}
         />
       )}

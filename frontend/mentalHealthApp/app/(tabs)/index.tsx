@@ -12,6 +12,7 @@ import { HomeHeader } from '@/components/home/HomeHeader';
 import { RecommendationCard, Recommendation } from '@/components/home/RecommendationCard';
 import { CheckInCard } from '@/components/home/CheckInCard';
 import { WeeklyChart, DayScore } from '@/components/home/WeeklyChart';
+import { useAuth } from '@/hooks/useAuth';
 
 // Placeholder — replace with API response from GET /api/recommendations/today
 const RECOMMENDATION: Recommendation = {

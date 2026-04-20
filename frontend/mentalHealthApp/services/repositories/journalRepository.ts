@@ -1,4 +1,5 @@
-import { executeSqlAsync, getCurrentUserId, initDb } from "@/services/db";
+import { executeSqlAsync, initDb } from "@/services/db";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export interface RawEntry {
   id: string;
@@ -35,7 +36,7 @@ function safeJsonParse<T>(value: any): T | null {
 
 export async function upsertServerEntries(
   evaluations: ServerEvaluation[],
-  userId: number = getCurrentUserId()
+  userId?: number
 ) {
   await initDb();
 
@@ -57,7 +58,7 @@ export async function upsertServerEntries(
         synced=1;`,
       [
         evaluationId,
-        userId,
+        userId ?? await AsyncStorage.getItem("id"),
         evaluation.timestamp ?? new Date().toISOString(),
         evaluation.label ?? "unknown",
         JSON.stringify(evaluation.scores ?? {}),
@@ -129,7 +130,7 @@ export async function getEntriesForRange(params: {
   end: Date;
   userId?: number;
 }) {
-  const { start, end, userId = getCurrentUserId() } = params;
+  const { start, end, userId } = params;
   await initDb();
   const result = await executeSqlAsync(
     `SELECT
@@ -150,7 +151,7 @@ export async function getEntriesForRange(params: {
      LEFT JOIN text_evaluations t ON t.evaluation_id = e.id
      WHERE e.user_id = ? AND e.timestamp >= ? AND e.timestamp < ?
      ORDER BY datetime(e.timestamp) ASC, e.id ASC;`,
-    [userId, start.toISOString(), end.toISOString()]
+    [userId ?? await AsyncStorage.getItem('id'), start.toISOString(), end.toISOString()]
   );
 
   const rows = result.rows as any;
@@ -189,7 +190,7 @@ export async function getEntriesForRange(params: {
 
 export async function getEntriesForMonth(
   monthStart: Date,
-  userId: number = getCurrentUserId()
+  userId?: number
 ) {
   const start = new Date(monthStart);
   start.setDate(1);
@@ -201,8 +202,9 @@ export async function getEntriesForMonth(
 
 export async function trimToRecentWeeks(
   cutoffStart: Date,
-  userId: number = getCurrentUserId()
+  userId?: number
 ) {
+  userId = userId ?? Number(await AsyncStorage.getItem("id"))
   await initDb();
   await executeSqlAsync(
     `DELETE FROM audio_evaluations
@@ -233,4 +235,14 @@ export async function trimToRecentWeeks(
      WHERE user_id = ? AND synced = 1 AND timestamp < ?;`,
     [userId, cutoffStart.toISOString()]
   );
+}
+
+export async function getTotalEvals(user_id?:number){
+  const result = await executeSqlAsync(`
+    
+    SELECT COUNT(*) FROM evaluations WHERE user_id = ?
+    
+    `, [user_id ?? await AsyncStorage.getItem("id")]);
+
+    return result?.rows?.item(0)?.total ?? result?.rows?.item(0);
 }

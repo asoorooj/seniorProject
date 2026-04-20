@@ -19,6 +19,7 @@ import ChatInput from "../components/chat/ChatInput";
 import {
   getLatestUserEmotionLabel,
   getAllMessages,
+  upsertServerMessages,
 } from "@/services/repositories/chatRepository";
 import {
   ensureMessageOutboxAndLocal,
@@ -27,6 +28,9 @@ import {
   syncMessagesBefore,
 } from "@/services/sync/syncController";
 import { useAuth } from "@/hooks/useAuth";
+import { executeSqlAsync } from "@/services/db";
+import { sendChatMessage } from "@/services/apiService";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function ChatScreen() {
   const router = useRouter();
@@ -42,8 +46,8 @@ export default function ChatScreen() {
   const [messageEmotion, setMessageEmotion] = useState<string|undefined>(undefined);
   const [messages, setMessages] = useState<Message[]>([]);
   const chatPageLimit = 20;
-  const { sessionId } = useAuth();
 
+  const {user, jwt} = useAuth();
 
   const messageKey = (message: Message, index = 0) => {
     const idPart =
@@ -55,22 +59,11 @@ export default function ChatScreen() {
     return `${idPart}-${message.isUser ? "u" : "b"}-${timePart}-${index}`;
   };
 
-  // const sortMessages = (items: Message[]) =>
-  //   [...items].sort((a, b) => {
-  //     const timeA = a.timestamp?.getTime?.() ?? new Date(a.timestamp as any).getTime();
-  //     const timeB = b.timestamp?.getTime?.() ?? new Date(b.timestamp as any).getTime();
-  //     if (timeA !== timeB) return timeA - timeB;
-  //     if (a.isUser !== b.isUser) return a.isUser ? -1 : 1;
-  //     const aId = typeof a.id === "number" ? a.id : Number.MAX_SAFE_INTEGER;
-  //     const bId = typeof b.id === "number" ? b.id : Number.MAX_SAFE_INTEGER;
-  //     return aId - bId;
-  //   });
-
   const mapApiMessages = (apiMessages: any[]) => {
     return apiMessages.map((message: any) => {
       return new Message({
         id: message.id ?? message.server_id,
-        sessionId: message.sessionId ?? message.session_id,
+        userId: message.user_id ?? message.user_id,
         isUser:
           typeof message.isUser === "boolean"
             ? message.isUser
@@ -108,66 +101,81 @@ export default function ChatScreen() {
     }
   };
 
-  const fetchHistory = async (beforeId?: number) => {
-    if (isFetchingHistory.current) return;
-    isFetchingHistory.current = true;
+const fetchHistory = async (beforeId?: number) => {
+  if (isFetchingHistory.current) return;
+  isFetchingHistory.current = true;
+
+  try {
+    // =========================
+    // 1. LOAD LOCAL FIRST (UI ALWAYS STABLE)
+    // =========================
     if (!beforeId) {
-      if (sessionId) {
-        await syncAllUnsynced(sessionId, "action");
+      let localMessages = await getAllMessages(user?.id);
+
+      if (!localMessages || localMessages.length === 0) {
+        localMessages = [
+          new Message({
+            isUser: false,
+            textMessage: "Wanna get something off your mind? Let's talk.",
+            timestamp: new Date(),
+          }),
+        ];
       }
-      const localMessages = await getAllMessages();
+
+      const emotion = await getLatestUserEmotionLabel(user?.id);
+      setMessageEmotion(emotion ?? undefined);
       setMessages(localMessages);
-      nextBeforeId.current = (await getFallbackBeforeId()) ?? undefined;
-      hasMoreRef.current = Boolean(nextBeforeId.current);
-    } else {
-      if (!sessionId) {
-        isFetchingHistory.current = false;
-        return;
-      }
-      // Older paging: pull 20-message page from API and persist locally.
-      const data = await syncMessagesBefore({
-        beforeId,
-        sessionId,
+
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollToEnd({ animated: false });
       });
-      if (!data) {
-        isFetchingHistory.current = false;
-        scheduleRetryIfNeeded();
-        return;
-      }
-      const apiMessages = data?.messages ?? [];
-      if (apiMessages.length > 0) {
-        const mapped = mapApiMessages(apiMessages);
-        setMessages((prev) => {
-          const existingIds = new Set(
-            prev
-              .map((message) => message.id)
-              .filter((id) => typeof id === "number") as number[]
-          );
-          const unique = mapped.filter((message) => {
-            const id = message.id;
-            return typeof id !== "number" || !existingIds.has(id);
-          });
-          if (unique.length === 0) return prev;
-          return [...unique, ...prev];
-        });
-      }
-      hasMoreRef.current = apiMessages.length === chatPageLimit;
-      nextBeforeId.current =
-        data?.next_before_id ?? getNextBeforeIdFromApi(apiMessages);
     }
+
+    // =========================
+    // 2. SERVER SYNC (BACKGROUND ONLY)
+    // =========================
+    try {
+      const data = await syncMessagesBefore({
+        beforeId: beforeId ?? Number.MAX_SAFE_INTEGER,
+        userId: user?.id
+      });
+
+      const apiMessages = data?.messages ?? [];
+
+      if (apiMessages.length > 0) {
+        await upsertServerMessages(apiMessages, user?.id);
+      }
+
+      const refreshed = await getAllMessages(user?.id);
+      setMessages(refreshed);
+
+      nextBeforeId.current =
+        data?.next_before_id ??
+        getFallbackBeforeId(user?.id) ??
+        undefined;
+
+      hasMoreRef.current = Boolean(nextBeforeId.current);
+    } catch (err) {
+      console.warn("[chat] server fetch failed, keeping current UI");
+    }
+
+    // =========================
+    // 4. EMOTION (ONLY ON INITIAL LOAD)
+    // =========================
     if (!beforeId) {
-      const emotion = await getLatestUserEmotionLabel();
+      const emotion = await getLatestUserEmotionLabel(user?.id);
       setMessageEmotion(emotion ?? undefined);
     }
-    clearRetry();
-    isFetchingHistory.current = false;
-  };
 
-  useEffect(() => {
-    fetchHistory().then(() => {
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 50);
-    });
-  },[])
+    clearRetry();
+  } finally {
+    isFetchingHistory.current = false;
+  }
+};
+
+useEffect(() => {
+  fetchHistory();
+}, []);
 
   const handleScroll = (event: any) => {
     const { contentOffset, contentSize, layoutMeasurement } = event?.nativeEvent || {};
@@ -182,29 +190,62 @@ export default function ChatScreen() {
     }
   };
 
-  const handleSendMessage = async (text: string) => {
-    setMessages((prev) => [...prev, new Message({id:undefined,sessionId:undefined,isUser:true, textMessage:text,timestamp: new Date()})]);
-    await ensureMessageOutboxAndLocal({
-      textMessage: text,
-      sessionId: sessionId ?? undefined,
+const handleSendMessage = async (text: string) => {
+  const localUserMessage = new Message({
+    id: undefined,
+    userId: user?.id,
+    isUser: true,
+    textMessage: text,
+    timestamp: new Date(),
+  });
+
+  requestAnimationFrame(() => {
+    scrollRef.current?.scrollToEnd({ animated: true });
+  });
+
+  // 1. Optimistic UI update
+  setMessages((prev) => [...prev, localUserMessage]);
+
+  setIsGenerating(true);
+
+  try {
+    // 2. Call API
+    const data = await sendChatMessage({
+      jwt: jwt ?? undefined,
+      message: text,
     });
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 30);
-    setIsGenerating(true);
-    try {
-      if (sessionId) {
-        await syncAllUnsynced(sessionId, "action");
-      }
-      const refreshed = await getAllMessages();
-      setMessages(refreshed);
-      const emotion = await getLatestUserEmotionLabel();
-      setMessageEmotion(emotion ?? undefined);
-    } catch (error) {
-      console.warn("[chat] handleSendMessage:error", error);
-    } finally {
-      setIsGenerating(false);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-    }
-  };
+
+    const userMsg = data.user_message;
+    const assistantMsg = data.response_message;
+
+    // 3. SAVE BOTH TO LOCAL DB HERE (single source of truth)
+    await upsertServerMessages(
+      [
+        {
+          ...userMsg,
+          synced: 1,
+        },
+        {
+          ...assistantMsg,
+          synced: 1,
+        },
+      ],
+      user?.id
+    );
+
+    // 4. Refresh UI from DB (prevents duplicates)
+    const refreshed = await getAllMessages(user?.id);
+    setMessages(refreshed);
+
+    const emotion = await getLatestUserEmotionLabel(user?.id);
+    setMessageEmotion(emotion ?? undefined);
+
+  } catch (error) {
+    console.warn("[chat] send failed", error);
+  } finally {
+    setIsGenerating(false);
+  }
+};
 
   return (
     <SafeAreaView style={styles.screen} edges={["left", "right"]}>
@@ -252,14 +293,16 @@ export default function ChatScreen() {
         scrollEventThrottle={16}
         stickyHeaderIndices={[0]}
       >
-        {messageEmotion && 
-          <View style={styles.moodStickyWrap}>
+        <View style={styles.moodStickyWrap}>
+          {messageEmotion ? (
             <View style={styles.moodPill}>
-              <Text style={styles.moodLabel}>Based on your messages: {messageEmotion}</Text>
-              <Text style={styles.moodValue}></Text>
+              <Text style={styles.moodLabel}>
+                Based on your messages: {messageEmotion}
+              </Text>
             </View>
-          </View>
-        }
+          ) : null}
+        </View>
+
         {messages.map((message, index) => (
           <MessageBubble key={messageKey(message, index)} message={message} />
         ))}

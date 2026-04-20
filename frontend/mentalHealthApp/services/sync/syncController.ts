@@ -1,9 +1,7 @@
 import {
   clearDatabase,
   executeSqlAsync,
-  getCurrentUserId,
   initDb,
-  setCurrentUserId,
 } from "@/services/db";
 import {
   fetchChatHistory,
@@ -22,6 +20,7 @@ import {
   trimToRecentWeeks,
   upsertServerEntries,
 } from "@/services/repositories/journalRepository";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type OutboxItem = {
   id: number;
@@ -129,28 +128,28 @@ async function deleteOutboxItem(itemId: number) {
 export async function enqueueMessageOutbox(params: {
   localId: number;
   textMessage: string;
-  sessionId?: number;
+  jwt?: string;
   timestamp: Date;
   userId?: number;
 }) {
   const {
     localId,
     textMessage,
-    sessionId,
+    jwt,
     timestamp,
-    userId = getCurrentUserId(),
+    userId
   } = params;
   await initDb();
   await executeSqlAsync(
     `INSERT INTO outbox (user_id, type, payload_json, created_at, attempts)
      VALUES (?, ?, ?, ?, 0);`,
     [
-      userId,
+      userId ?? await AsyncStorage.getItem("id"),
       "message",
       JSON.stringify({
         localId,
         textMessage,
-        sessionId,
+        jwt,
         timestamp: timestamp.toISOString(),
       }),
       new Date().toISOString(),
@@ -159,10 +158,10 @@ export async function enqueueMessageOutbox(params: {
 }
 
 export async function syncOutbox(
-  userId: number = getCurrentUserId(),
-  sessionId?: number | null
+  userId: number,
+  jwt?: string | null
 ) {
-  if (!sessionId) return [];
+  if (!jwt) return [];
   const items = await listOutbox(userId);
   const responses: any[] = [];
 
@@ -175,13 +174,8 @@ export async function syncOutbox(
     try {
       const payload = JSON.parse(item.payload_json);
       const res = await sendChatMessage({
-        sessionId,
-        message: {
-          sessionId: payload.sessionId ?? null,
-          isUser: true,
-          textMessage: payload.textMessage,
-          timestamp: payload.timestamp,
-        },
+        jwt,
+        message: payload.textMessage
       });
 
       if (!res) {
@@ -221,13 +215,13 @@ export async function syncOutbox(
 }
 
 export async function syncMessages(
-  userId: number = getCurrentUserId(),
-  sessionId?: number | null
+  userId: number,
+  jwt: string
 ) {
-  if (!sessionId) return null;
+  if (!jwt) return null;
   const state = await getSyncState(userId);
   const cursor = state?.messages_cursor ?? null;
-  const data = await fetchChatHistory({ sessionId, cursor, limit: 50 });
+  const data = await fetchChatHistory({ jwt, cursor, limit: 50 });
   if (!data) return null;
 
   if (data?.messages) {
@@ -247,11 +241,10 @@ export async function syncMessages(
 export async function syncMessagesBefore(params: {
   beforeId: number;
   userId?: number;
-  sessionId?: number | null;
+  jwt?: string;
 }) {
-  const { beforeId, userId = getCurrentUserId(), sessionId } = params;
-  if (!sessionId) return null;
-  const data = await fetchChatHistory({ sessionId, beforeId, limit: 20 });
+  const { beforeId, userId, jwt } = params;
+  const data = await fetchChatHistory({jwt, beforeId, limit: 20 });
   if (data?.messages) {
     await upsertServerMessages(data.messages, userId);
   }
@@ -261,12 +254,14 @@ export async function syncMessagesBefore(params: {
 
 export async function syncJournalWeek(
   weekStart: Date,
-  userId: number = getCurrentUserId(),
-  sessionId?: number | null
+  userId?: number,
+  jwt?: string | null
 ) {
-  if (!sessionId) return null;
+  userId = userId ?? Number(await AsyncStorage.getItem("id"));
+  if (!jwt) return null;
   const data = await fetchEvaluationsByDate({
-    sessionId,
+    jwt,
+    userId,
     startDate: weekStartDateString(weekStart),
   });
   if (data?.evaluations) {
@@ -279,15 +274,15 @@ export async function syncJournalWeek(
 }
 
 async function warmRecentJournalWindow(
-  userId: number,
-  sessionId: number,
+  userId?: number,
+  jwt?: string,
   weeks = 8
 ) {
   const currentWeekStart = getWeekStartLocal(new Date());
   for (let i = 0; i < weeks; i += 1) {
     const target = new Date(currentWeekStart);
     target.setDate(target.getDate() - i * 7);
-    await syncJournalWeek(target, userId, sessionId);
+    await syncJournalWeek(target, userId, jwt);
   }
 }
 
@@ -295,8 +290,7 @@ async function getHydrationCounts(userId: number) {
   const messageCountResult = await executeSqlAsync(
     `SELECT COUNT(*) AS total
      FROM messages m
-     JOIN sessions s ON s.id = m.session_id
-     WHERE s.user_id = ? AND m.deleted_at IS NULL;`,
+     WHERE user_id = ? AND m.deleted_at IS NULL;`,
     [userId]
   );
   const evalCountResult = await executeSqlAsync(
@@ -312,10 +306,10 @@ async function getHydrationCounts(userId: number) {
 }
 
 export async function syncAllUnsynced(
-  sessionId?: number | null,
+  jwt?: string | null,
   reason: SyncReason = "manual"
 ) {
-  if (!sessionId) return null;
+  if (!jwt) return null;
 
   const now = Date.now();
   if (syncInFlight) return syncInFlight;
@@ -323,13 +317,13 @@ export async function syncAllUnsynced(
   lastSyncStartedAt = now;
 
   syncInFlight = (async () => {
-    const userId = getCurrentUserId();
+    const userId = await AsyncStorage.getItem("id");
     try {
       await initDb();
       let messagePhaseOk = false;
       try {
-        await syncOutbox(userId, sessionId);
-        const messageData = await syncMessages(userId, sessionId);
+        await syncOutbox(Number(userId), jwt);
+        const messageData = await syncMessages(Number(userId), jwt);
         messagePhaseOk = Boolean(messageData);
         if (!messagePhaseOk) {
           console.warn("[sync] message phase returned no data; UI may remain stale until retry");
@@ -342,7 +336,7 @@ export async function syncAllUnsynced(
       }
 
       try {
-        await warmRecentJournalWindow(userId, sessionId, 8);
+        await warmRecentJournalWindow(Number(userId), jwt, 8);
       } catch (err) {
         if (isUnauthorizedError(err)) {
           throw err;
@@ -350,10 +344,10 @@ export async function syncAllUnsynced(
         console.warn("[sync] journal phase failed", err);
       }
 
-      await setSyncState(userId, {
+      await setSyncState(Number(userId), {
         last_sync_at: new Date().toISOString(),
       });
-      const counts = await getHydrationCounts(userId);
+      const counts = await getHydrationCounts(Number(userId));
       console.log("[sync] hydration counts", {
         reason,
         messagePhaseOk,
@@ -378,37 +372,35 @@ export async function syncAllUnsynced(
 
 export async function syncAll(
   reason: "startup" | "manual" = "manual",
-  sessionId?: number | null
+  jwt?: string | null
 ) {
-  return syncAllUnsynced(sessionId, reason);
+  return syncAllUnsynced(jwt, reason);
 }
 
 export async function clearLocalData() {
-  await clearDatabase();
+  // await clearDatabase();
 }
 
-export async function switchUserAndSync(userId: number, sessionId?: number | null) {
-  await clearDatabase();
-  setCurrentUserId(userId);
-  await syncAllUnsynced(sessionId, "manual");
+export async function switchUserAndSync(jwt?: string | null) {
+  // await clearDatabase();
+  await syncAllUnsynced(jwt, "manual");
 }
 
 export async function ensureMessageOutboxAndLocal(params: {
   textMessage: string;
-  sessionId?: number;
+  jwt?: string;
   userId?: number;
 }) {
-  const { textMessage, sessionId, userId = getCurrentUserId() } = params;
+  const { textMessage, jwt, userId } = params;
   const message = await addLocalMessage({
     textMessage,
-    sessionId,
-    userId,
+    userId: (userId ?? Number(await AsyncStorage.getItem("id"))),
   });
   if (message.id != null) {
     await enqueueMessageOutbox({
       localId: Number(message.id),
       textMessage,
-      sessionId,
+      jwt,
       timestamp: message.timestamp,
       userId,
     });
@@ -416,6 +408,6 @@ export async function ensureMessageOutboxAndLocal(params: {
   return message;
 }
 
-export async function getFallbackBeforeId(userId: number = getCurrentUserId()) {
+export async function getFallbackBeforeId(userId?: number) {
   return getOldestServerId(userId);
 }

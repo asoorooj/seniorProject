@@ -12,7 +12,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { endEvaluation } from '@/services/apiService';
+import { cancelEvaluation, endEvaluation } from '@/services/apiService';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG           = '#1E1830';
@@ -53,8 +53,7 @@ function formatNow(): string {
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 async function callEndEvaluation(
-  evaluationId: number,
-  sessionId: number
+  evaluationId: number
 ): Promise<{evaluation_id:number; label:string; status:string; suggestion:string; scores:string;} | null> {
   try {
     const data = await endEvaluation(evaluationId);
@@ -115,7 +114,6 @@ export default function ResultsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     evaluationId?: string;
-    sessionId?: string;
     faceLabel?: string;
     faceConf?: string;
     faceSkipped?: string;
@@ -126,9 +124,9 @@ export default function ResultsScreen() {
     textConf?: string;
     textSkipped?: string;
   }>();
+  console.log(params);
 
   const evaluationId = params.evaluationId ? Number(params.evaluationId) : null;
-  const sessionId = params.sessionId ? Number(params.sessionId) : null;
   const faceLabel    = params.faceLabel  ?? 'Neutral';
   const faceConf     = Number(params.faceConf  ?? 0);
   const faceSkipped  = params.faceSkipped === 'true';
@@ -138,6 +136,7 @@ export default function ResultsScreen() {
   const textLabel    = params.textLabel  ?? 'Neutral';
   const textConf     = Number(params.textConf  ?? 0);
   const textSkipped  = params.textSkipped === 'true';
+  console.log("HERE",textSkipped, params.textSkipped);
 
   const [fusionModelData, setFusionModelData] = useState< {evaluation_id:number; label:string; status:string; suggestion:string; scores:string; error?:string} | null>(null);
   const [loading,     setLoading]     = useState(true);
@@ -148,9 +147,7 @@ export default function ResultsScreen() {
 
   useEffect(() => {
     const run = async () => {
-      const data = evaluationId !== null && sessionId
-        ? await callEndEvaluation(evaluationId, sessionId)
-        : null;
+      const data = evaluationId !== null ? await callEndEvaluation(evaluationId) : null;
       setFusionModelData(data);
       setLoading(false);
       
@@ -215,7 +212,7 @@ export default function ResultsScreen() {
       {/* Back to home */}
       <TouchableOpacity
         style={styles.backBtn}
-        onPress={() => router.replace('/(tabs)')}
+        onPress={() => { if(evaluationId) cancelEvaluation(evaluationId); router.replace('/(tabs)');}}
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       >
         <Feather name="x" size={22} color={TEXT_MUTED} />
@@ -245,7 +242,10 @@ export default function ResultsScreen() {
           end={{ x: 0, y: 1 }}
           style={styles.heroCard}
         >
-          <Text style={styles.moodSuggestionLabel}>{fusionModelData?.suggestion || "Nice Results!"}</Text>
+          <Text style={styles.moodSuggestionLabel}>{ faceSkipped && audioSkipped && textSkipped ? 
+            "Enable evaluation preferences to scan your emotions"
+            : 
+            fusionModelData?.suggestion ?? `Nice Results!${faceSkipped+" "+audioSkipped+" "+textSkipped}`}</Text>
         </LinearGradient>
       </Animated.View>
 

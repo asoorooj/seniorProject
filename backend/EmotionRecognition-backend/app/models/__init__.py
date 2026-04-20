@@ -1,2 +1,2 @@
-from .db_models import User, Session, Message, Extraction, Prediction 
+from .db_models import User, Message
 from app.extensions import db

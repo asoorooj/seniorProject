@@ -36,8 +36,8 @@ import {
   clearLocalData,
   syncAllUnsynced,
 } from '@/services/sync/syncController';
-import { TEST_USER } from '@/components/userTest';
 import { useAuth } from '@/hooks/useAuth';
+import { getTotalEvals } from '@/services/repositories/journalRepository';
 
 // Derive isToday from the current day of the week (0=Sun, 1=Mon, ..., 6=Sat)
 const DAYS: DayScore['day'][] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -74,17 +74,16 @@ type UserProfile = {
 };
 
 const DEFAULT_PREFERENCES: UserPreferences = {
-  eval_face: true,
-  eval_audio: true,
-  eval_text: true,
+  pref_eval_image: true,
+  pref_eval_text: true,
+  pref_eval_audio: true,
 };
 
-const CURRENT_USER_ID = TEST_USER.userId;
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user: authUser, sessionId, setSessionId, setUser: setAuthUser } = useAuth();
-  const currentUserId = authUser?.id ?? CURRENT_USER_ID;
+  const { user: authUser, jwt, setJwt, setUser: setAuthUser, syncUserToCache: updateUserCache } = useAuth();
+  const currentUserId = authUser?.id;
   const [user, setUser] = useState<UserProfile>(PLACEHOLDER_USER);
   const [scores, setScores] = useState<DayScore[]>(PLACEHOLDER_SCORES);
   const [emotions, setEmotions] = useState<EmotionTag[]>(PLACEHOLDER_EMOTIONS);
@@ -93,6 +92,30 @@ export default function ProfileScreen() {
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [savingPreferences, setSavingPreferences] = useState(false);
+
+  useEffect(()=>{
+    const getValues = async function(){
+      const count = (await getTotalEvals())["COUNT(*)"];
+      let user:UserProfile = {
+        name:authUser?.email ?? PLACEHOLDER_USER.name,
+        memberSince: String(authUser?.created_at) ?? PLACEHOLDER_USER.memberSince,
+        scans: PLACEHOLDER_USER.scans,
+        journals: authUser?.journalCount ?? count,
+        streak: authUser?.streak ?? 0
+      };
+      let preferences: UserPreferences = {
+        pref_eval_audio: authUser?.preferences?.pref_eval_audio ?? false,
+        pref_eval_text: authUser?.preferences?.pref_eval_text ?? false,
+        pref_eval_image: authUser?.preferences?.pref_eval_image ?? false
+      };
+      setUser(user);
+      setPreferences(preferences);
+      await updateUserCache();
+    };
+
+    getValues();
+  },[authUser]);
+
 
   const fetchData = useCallback(async () => {
     setError(false);
@@ -103,20 +126,21 @@ export default function ProfileScreen() {
         if (currentUser?.user?.preferences) {
           setPreferences(currentUser.user.preferences);
         }
+      if(currentUserId){
+        const [localProfile, localScores, localEmotions] = await Promise.all([
+          getProfileCache<UserProfile>(currentUserId),
+          getScoresCache<DayScore[]>(currentUserId),
+          getEmotionsCache<EmotionTag[]>(currentUserId),
+        ]);      
+        if (localProfile) setUser(localProfile);
+        if (localScores) setScores(localScores);
+        if (localEmotions) setEmotions(localEmotions);
       }
-      const [localProfile, localScores, localEmotions] = await Promise.all([
-        getProfileCache<UserProfile>(),
-        getScoresCache<DayScore[]>(),
-        getEmotionsCache<EmotionTag[]>(),
-      ]);
-      if (localProfile) setUser(localProfile);
-      if (localScores) setScores(localScores);
-      if (localEmotions) setEmotions(localEmotions);
     } catch (err) {
       console.error('Profile fetch failed:', err);
       setError(true);
     }
-  }, [currentUserId, sessionId]);
+  }, [currentUserId, jwt]);
 
   useEffect(() => {
     setLoading(true);
@@ -135,12 +159,13 @@ export default function ProfileScreen() {
       [key]: !preferences[key],
     };
 
-    if (!nextPreferences.eval_face && !nextPreferences.eval_audio && !nextPreferences.eval_text) {
-      return;
-    }
+    // if (!nextPreferences.pref_eval_audio && !nextPreferences.pref_eval_text && !nextPreferences.pref_eval_image) {
+    //   return;
+    // }
 
-    setPreferences(nextPreferences);
-    setSavingPreferences(true);
+    if(authUser){
+      setAuthUser({...authUser, preferences:{...nextPreferences}});
+    } else { //if authUser is null
 
     if (!sessionId) {
       setPreferences(preferences);
@@ -154,8 +179,23 @@ export default function ProfileScreen() {
       await syncAllUnsynced(sessionId, "action");
     }
 
-    setSavingPreferences(false);
-  }, [preferences, sessionId, currentUserId]);
+    // setPreferences(nextPreferences);
+    // setSavingPreferences(true);
+
+    // if (!jwt) {
+    //   setPreferences(preferences);
+    //   setSavingPreferences(false);
+    //   return;
+    // }
+    // const updated = await updateUserPreferences(nextPreferences,currentUserId);
+    // if (!updated?.preferences) {
+    //   setPreferences(preferences);
+    // } else {
+    //   await syncAllUnsynced(jwt, "action");
+    // }
+
+    // setSavingPreferences(false);
+  }, [preferences, jwt, currentUserId]);
 
   const handleSignOut = useCallback(() => {
       Alert.alert(
@@ -199,7 +239,7 @@ export default function ProfileScreen() {
           <EmotionalProfileCard emotions={emotions} />
 
           <Text style={sectionLabel}>Data & Privacy</Text>
-          <ConsentPermissionsCard />
+          {/* <ConsentPermissionsCard /> */}
           <StoragePermissionsCard
             preferences={preferences}
             saving={savingPreferences}
