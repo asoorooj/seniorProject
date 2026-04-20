@@ -5,7 +5,7 @@ from google.genai import types
 from google import genai
 
 from app.extensions import db
-from app.models.db_models import Message, Session
+from app.models.db_models import Message
 
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -111,9 +111,9 @@ def _chat_config():
     )
 
 
-def _build_gemini_history(session_id, limit=10):
+def _build_gemini_history(user_id, limit=10):
     rows = (
-        Message.query.filter_by(session_id=int(session_id))
+        Message.query.filter_by(user_id=int(user_id))
         .order_by(Message.id.desc())
         .limit(limit)
         .all()
@@ -148,27 +148,27 @@ def createChat(history=None):
     return chat
 
 
-def create_chat_session_with_id(user_id):
-    session = Session(user_id=user_id)
-    db.session.add(session)
-    db.session.flush()
-    welcome_message = Message(
-        session_id=session.id,
-        role="assistant",
-        textMessage="Tell me what's on your mind?",
-    )
-    db.session.add(welcome_message)
-    db.session.commit()
-    chat = create_chat_with_id(session.id)
-    return session, chat
+# def create_chat_session_with_id(user_id):
+#     session = Session(user_id=user_id)
+#     db.session.add(session)
+#     db.session.flush()
+#     welcome_message = Message(
+#         session_id=session.id,
+#         role="assistant",
+#         textMessage="Tell me what's on your mind?",
+#     )
+#     db.session.add(welcome_message)
+#     db.session.commit()
+#     chat = create_chat_with_id(session.id)
+#     return session, chat
 
-def create_chat_with_id(session_id):
-    history = _build_gemini_history(session_id=session_id, limit=10)
+def create_chat_with_id(user_id):
+    history = _build_gemini_history(user_id=user_id, limit=10)
     chat = createChat(history=history)
     return chat
 
-def get_chat_history(session_id, limit=20, before_id=None):
-    query = Message.query.filter_by(session_id=session_id)
+def get_chat_history(user_id, limit=20, before_id=None):
+    query = Message.query.filter_by(user_id=user_id)
     if before_id is not None:
         query = query.filter(Message.id < before_id)
     rows = (
@@ -179,7 +179,7 @@ def get_chat_history(session_id, limit=20, before_id=None):
     messages = [
         {
             "id": m.id,
-            "session_id": m.session_id,
+            "user_id": m.user_id,
             "role": m.role,
             "textMessage": m.textMessage,
             "emotionLabel": m.emotion_label,
@@ -195,3 +195,27 @@ def get_chat_history(session_id, limit=20, before_id=None):
         "has_more": has_more,
         "next_before_id": next_before_id,
     }
+
+def statistic_analysis(statistics):
+    chat = client.chats.create(
+        model="gemini-2.5-flash",
+        config=types.GenerateContentConfig(
+            system_instruction="""
+                You are a mental health chatbot please write a short
+                analysis given the statistics and trends of the user
+                data. And provide any advice or solutions to help the
+                user feel their best.
+                """,
+        ),
+    )
+    prompt = (
+        f"Statistics: {statistics}"
+    )
+    try:
+        response = chat.send_message(prompt)
+        text = _extract_gemini_text(response).strip()
+        if text:
+            return text
+    except Exception:
+        pass
+    return f"You seem. Try one small calming activity and check in with yourself again soon."

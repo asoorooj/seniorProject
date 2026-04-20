@@ -4,19 +4,19 @@ import { syncAllUnsynced } from "@/services/sync/syncController";
 import { useAuth } from "@/hooks/useAuth";
 
 export function SyncProvider({ children }: { children: React.ReactNode }) {
-  const { sessionId, loading } = useAuth();
+  const { jwt, loading } = useAuth();
 
   useEffect(() => {
     let mounted = true;
     initDb().then(() => {
-      if (mounted && !loading && sessionId) {
-        syncAllUnsynced(sessionId, "startup").catch(() => {});
+      if (mounted && !loading && jwt) {
+        syncAllUnsynced(jwt, "startup").catch(() => {});
       }
     });
     return () => {
       mounted = false;
     };
-  }, [sessionId, loading]);
+  }, [jwt, loading]);
 
   return <>{children}</>;
 }

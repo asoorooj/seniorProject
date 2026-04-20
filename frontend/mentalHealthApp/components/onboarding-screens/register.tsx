@@ -15,8 +15,7 @@ import { Feather } from '@expo/vector-icons';
 // import { registerUser } from '@/services/apiService'; // uncomment when backend is running
 // TODO (auth team): import saveAuth from '@/services/auth' and call saveAuth(data.token, data.user.id, data.user.email) after successful registration to persist the auth token
 import { switchUserAndSync } from '@/services/sync/syncController';
-import { setCurrentUserId } from '@/services/db';
-import { registerUser, saveToken } from '../../constants/api';
+import { registerUser, saveUser } from '../../services/apiService';
   
 
 export default function RegisterScreen() {
@@ -201,7 +200,7 @@ export default function RegisterScreen() {
                   console.log("REGISTER RESPONSE:", res);
 
                   if (res.token) {
-                    await saveToken(res.token);
+                    await saveUser(res);
                     console.log("Registered successfully");
 
                     router.replace("/(tabs)");

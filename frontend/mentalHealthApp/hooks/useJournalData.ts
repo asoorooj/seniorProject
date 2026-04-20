@@ -170,7 +170,8 @@ export function getWeekStart(date: Date): Date {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useJournalData() {
-    const { sessionId } = useAuth();
+    const { jwt, user } = useAuth();
+    console.log(user)
     const today = new Date();
 
     const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(today));
@@ -206,7 +207,7 @@ export function useJournalData() {
         let cancelled = false;
         setWeekLoading(true);
 
-        const run = async () => {
+        const run = async (sync:boolean) => {
             const weekKey = getWeekKey(weekStart);
             const { start, end } = getWeekRange(getWeekStart(weekStart));
             let rawEntries: RawEntry[] = [];
@@ -214,17 +215,21 @@ export function useJournalData() {
             if (loadedWeeksRef.current[weekKey]) {
                 rawEntries = loadedWeeksRef.current[weekKey];
             } else {
-                if (sessionId) {
-                    await syncAllUnsynced(sessionId, "action");
+                    console.log("sync check");
+                if (jwt && sync) {
+                    console.log("running");
+                    const data = await syncAllUnsynced(jwt, "action");
+                    console.log("DONE RUNNING",data);
                 }
                 const localWeekEntries = await getEntriesForRange({ start, end });
                 if (isWeekInCache(weekStart)) {
                     rawEntries = localWeekEntries;
-                } else if (!sessionId) {
+                } else if (!jwt) {
                     rawEntries = localWeekEntries;
                 } else {
                     const data = await fetchEvaluationsByDate({
-                        sessionId,
+                        jwt,
+                        userId: user?.id, //See how to ensure userId is not null, either force an refetch of user data 
                         startDate: weekStartDateString(weekStart),
                     });
                     if (data && Array.isArray(data.evaluations)) {
@@ -247,10 +252,11 @@ export function useJournalData() {
             setWeekLoading(false);
         };
 
-        run();
+        run(false);
+        run(true);
 
         return () => { cancelled = true; };
-    }, [weekStart.toISOString(), sessionId]);
+    }, [weekStart.toISOString(), jwt]);
 
     // When the selected day changes: filter from the already-fetched week entries
     // Does not call the API again, its sliced from what we collected

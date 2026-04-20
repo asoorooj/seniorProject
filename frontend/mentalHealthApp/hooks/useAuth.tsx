@@ -1,10 +1,7 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
-import {
-  clearDatabase,
-  restoreAuthSession,
-  setCurrentUserId,
-} from "@/services/db";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { clearDatabase } from "@/services/db";
 import { setSyncUnauthorizedHandler } from "@/services/sync/syncController";
+import { fetchUserProfile, getUser, syncUser } from "@/services/apiService";
 
 export type User = {
   id: number;
@@ -12,27 +9,49 @@ export type User = {
   external_id: string;
   created_at: string;
   consent_timestamp?: string;
-  pref_eval_face: boolean;
-  pref_eval_audio: boolean;
-  pref_eval_text: boolean;
+  preferences: {
+    pref_eval_image: boolean;
+    pref_eval_audio: boolean;
+    pref_eval_text: boolean;
+  };
+  storage_consent: {
+    stor_cons_image: boolean;
+    stor_cons_audio: boolean;
+    stor_cons_text: boolean;
+  }
+  streak:number;
+  token: string | undefined; 
+  journalCount?:number;
 };
 
 type AuthContextType = {
   user: User | null;
-  sessionId: number | null;
+  jwt: string | null;
   loading: boolean;
 
   setUser: (user: User | null) => void;
-  setSessionId: (id: number | null) => void;
+  setJwt: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
+  syncUserToCache: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [sessionId, setSessionId] = useState<number | null>(null);
+  const [jwt, setJwt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const syncUserToCache = useCallback(async function(){
+    try{
+      if(user){
+        await syncUser(user);
+      } else {
+        throw new Error("user is undefined");
+      } 
+    } catch (error){
+      console.error("[cache] could not sync user cache",error);
+    }
+  },[user]);
 
   useEffect(() => {
     let mounted = true;
@@ -40,13 +59,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const bootstrap = async () => {
       setLoading(true);
       try {
-        const restored = await restoreAuthSession();
-        if (!mounted) return;
-        if (restored) {
-          setUser(restored.user);
-          setSessionId(restored.sessionId);
-          setCurrentUserId(restored.user.id);
+        const restored = await getUser();
+        try{
+          const updatedUserData = await fetchUserProfile();
+          await syncUser(updatedUserData.user);
+          const userToUpdate = {...updatedUserData.user,journalCount: updatedUserData.journal_count}
+          setUser(userToUpdate);
+        } catch (error){
+          console.error(error, "Can not update user profile");
+          if (restored && restored.token) {
+            setUser(restored);
+            setJwt(restored.token);
+          }
         }
+        if (!mounted) return;
       } catch (err) {
         console.warn("[auth] restore failed", err);
       } finally {
@@ -60,7 +86,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       await clearDatabase();
       if (!mounted) return;
       setUser(null);
-      setSessionId(null);
+      setJwt(null);
       setLoading(false);
     });
 
@@ -75,11 +101,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     <AuthContext.Provider
       value={{
         user,
-        sessionId,
+        jwt,
         loading,
         setUser,
-        setSessionId,
+        setJwt,
         setLoading,
+        syncUserToCache,
       }}
     >
       {children}

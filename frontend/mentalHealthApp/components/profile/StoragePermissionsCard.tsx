@@ -19,9 +19,9 @@ type Props = {
 
 export function StoragePermissionsCard({ preferences, saving = false, onToggle }: Props) {
   const permissionItems: Permission[] = [
-    { id: 'eval_text', name: 'Text', icon: 'article', enabled: preferences.eval_text },
-    { id: 'eval_audio', name: 'Voice', icon: 'mic', enabled: preferences.eval_audio },
-    { id: 'eval_face', name: 'Face', icon: 'photo-camera', enabled: preferences.eval_face },
+    { id: 'pref_eval_text', name: 'Text', icon: 'article', enabled: preferences.pref_eval_text },
+    { id: 'pref_eval_audio', name: 'Voice', icon: 'mic', enabled: preferences.pref_eval_audio },
+    { id: 'pref_eval_image', name: 'Face', icon: 'photo-camera', enabled: preferences.pref_eval_image },
   ];
 
   return (

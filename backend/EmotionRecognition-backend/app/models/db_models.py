@@ -10,13 +10,21 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(256), nullable=False)
+    consent_timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     
 
     # EVALUATION PREFERENCES
-    pref_eval_face = db.Column(db.Boolean, default=True, nullable=False)
+    pref_eval_image = db.Column(db.Boolean, default=True, nullable=False)
     pref_eval_audio = db.Column(db.Boolean, default=True, nullable=False)
     pref_eval_text = db.Column(db.Boolean, default=True, nullable=False)
+
+    # EVALUATION PREFERENCES
+    stor_cons_image = db.Column(db.Boolean, default=True, nullable=False)
+    stor_cons_audio = db.Column(db.Boolean, default=True, nullable=False)
+    stor_cons_text = db.Column(db.Boolean, default=True, nullable=False)
+
+    streak = db.Column(db.Integer, default=0, nullable=True)
 
     sessions = db.relationship("Session", backref="user", cascade="all, delete-orphan")
     evaluations = db.relationship("Evaluation", backref="user", cascade="all, delete-orphan")
@@ -35,15 +43,15 @@ class Session(db.Model):
     started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     last_seen_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)
 
-    messages = db.relationship("Message", backref="session", cascade="all, delete-orphan")
-    extractions = db.relationship("Extraction", backref="session", cascade="all, delete-orphan")
-    predictions = db.relationship("Prediction", backref="session", cascade="all, delete-orphan")
+    # messages = db.relationship("Message", backref="session", cascade="all, delete-orphan")
+    # extractions = db.relationship("Extraction", backref="session", cascade="all, delete-orphan")
+    # predictions = db.relationship("Prediction", backref="session", cascade="all, delete-orphan")
 
 
 class Message(db.Model):
     __tablename__ = "messages"
     id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.Integer, db.ForeignKey("sessions.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     role = db.Column(db.String(16), nullable=False)  # "user" or "assistant"
     textMessage = db.Column(db.Text, nullable=False)
     emotion_label = db.Column(db.String(32), nullable=True)
@@ -51,23 +59,23 @@ class Message(db.Model):
 
     
 
-class Extraction(db.Model):
-    __tablename__ = "extractions"
-    id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.Integer, db.ForeignKey("sessions.id"), nullable=False)
-    json_data = db.Column(db.JSON, nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+# class Extraction(db.Model):
+#     __tablename__ = "extractions"
+#     id = db.Column(db.Integer, primary_key=True)
+#     session_id = db.Column(db.Integer, db.ForeignKey("sessions.id"), nullable=False)
+#     json_data = db.Column(db.JSON, nullable=False)
+#     timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
-class Prediction(db.Model):
-    __tablename__ = "predictions"
-    id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.Integer, db.ForeignKey("sessions.id"), nullable=False)
-    modality = db.Column(db.String(16), nullable=False)  # "text" / "face" / "audio"
-    label = db.Column(db.String(32), nullable=False)
-    confidence = db.Column(db.Float, nullable=True)
-    raw_probs = db.Column(db.JSON, nullable=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+# class Prediction(db.Model):
+#     __tablename__ = "predictions"
+#     id = db.Column(db.Integer, primary_key=True)
+#     session_id = db.Column(db.Integer, db.ForeignKey("sessions.id"), nullable=False)
+#     modality = db.Column(db.String(16), nullable=False)  # "text" / "face" / "audio"
+#     label = db.Column(db.String(32), nullable=False)
+#     confidence = db.Column(db.Float, nullable=True)
+#     raw_probs = db.Column(db.JSON, nullable=True)
+#     timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 class Evaluation(db.Model):
     __tablename__ = "evaluations"

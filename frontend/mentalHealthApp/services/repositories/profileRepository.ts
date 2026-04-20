@@ -1,4 +1,5 @@
-import { executeSqlAsync, getCurrentUserId, initDb } from "@/services/db";
+import { executeSqlAsync, initDb } from "@/services/db";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
@@ -37,23 +38,25 @@ function variantForIndex(index: number): "green" | "coral" | "outline" {
   return "outline";
 }
 
-async function getUserRow(userId: number) {
+async function getUserRow(userId?: number) {
   await initDb();
   const result = await executeSqlAsync(`SELECT * FROM users WHERE id = ? LIMIT 1;`, [
-    userId,
+    userId ?? await AsyncStorage.getItem("id"),
   ]);
   return (result.rows as any).item(0) ?? null;
 }
 
-export async function setProfileCache(_profile: unknown, _userId = getCurrentUserId()) {
+export async function setProfileCache(_profile: unknown, _userId:number) {
   // No-op by design: profile is derived from normalized backend-like tables.
   return null;
 }
 
-export async function getProfileCache<T = unknown>(userId = getCurrentUserId()) {
+export async function getProfileCache<T = unknown>(userId?:number) {
   await initDb();
   const user = await getUserRow(userId);
   if (!user) return null;
+
+  userId = userId ?? Number(await AsyncStorage.getItem("id"));
 
   const countsResult = await executeSqlAsync(
     `SELECT
@@ -109,12 +112,12 @@ export async function getProfileCache<T = unknown>(userId = getCurrentUserId()) 
   return profile as T;
 }
 
-export async function setScoresCache(_scores: unknown, _userId = getCurrentUserId()) {
+export async function setScoresCache(_scores: unknown, _userId:number) {
   // No-op by design.
   return null;
 }
 
-export async function getScoresCache<T = unknown>(userId = getCurrentUserId()) {
+export async function getScoresCache<T = unknown>(userId?:number) {
   await initDb();
   const today = new Date();
   const weekStart = new Date(today);
@@ -127,7 +130,7 @@ export async function getScoresCache<T = unknown>(userId = getCurrentUserId()) {
     `SELECT timestamp, scores
      FROM evaluations
      WHERE user_id = ? AND timestamp >= ? AND timestamp < ?;`,
-    [userId, weekStart.toISOString(), weekEnd.toISOString()]
+    [userId ?? await AsyncStorage.getItem("id"), weekStart.toISOString(), weekEnd.toISOString()]
   );
 
   const byDay: Record<number, number[]> = {};
@@ -154,12 +157,12 @@ export async function getScoresCache<T = unknown>(userId = getCurrentUserId()) {
   return scores as T;
 }
 
-export async function setEmotionsCache(_emotions: unknown, _userId = getCurrentUserId()) {
+export async function setEmotionsCache(_emotions: unknown, _userId: number) {
   // No-op by design.
   return null;
 }
 
-export async function getEmotionsCache<T = unknown>(userId = getCurrentUserId()) {
+export async function getEmotionsCache<T = unknown>(userId?: number) {
   await initDb();
   const result = await executeSqlAsync(
     `SELECT label, COUNT(*) AS total
@@ -168,7 +171,7 @@ export async function getEmotionsCache<T = unknown>(userId = getCurrentUserId())
      GROUP BY label
      ORDER BY total DESC
      LIMIT 4;`,
-    [userId]
+    [userId ?? await AsyncStorage.getItem("id")]
   );
 
   const emotions: Array<{ label: string; variant: "green" | "coral" | "outline" }> = [];
