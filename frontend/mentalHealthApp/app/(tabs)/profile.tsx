@@ -8,6 +8,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -22,10 +23,10 @@ import { colors } from '@/assets/styles/colors';
 import { sectionLabel } from "@/assets/styles/text";
 import {
   fetchCurrentUser,
-  logout,
   type UserPreferences,
   updateUserPreferences,
 } from '@/services/apiService';
+
 import {
   getEmotionsCache,
   getProfileCache,
@@ -119,7 +120,8 @@ export default function ProfileScreen() {
   const fetchData = useCallback(async () => {
     setError(false);
     try {
-        await syncAllUnsynced(jwt, "action");
+      if (sessionId) {
+        await syncAllUnsynced(sessionId, "action");
         const currentUser = await fetchCurrentUser();
         if (currentUser?.user?.preferences) {
           setPreferences(currentUser.user.preferences);
@@ -165,6 +167,16 @@ export default function ProfileScreen() {
       setAuthUser({...authUser, preferences:{...nextPreferences}});
     } else { //if authUser is null
 
+    if (!sessionId) {
+      setPreferences(preferences);
+      setSavingPreferences(false);
+      return;
+    }
+    const updated = await updateUserPreferences(currentUserId, nextPreferences);
+    if (!updated?.preferences) {
+      setPreferences(preferences);
+    } else {
+      await syncAllUnsynced(sessionId, "action");
     }
 
     // setPreferences(nextPreferences);
@@ -186,40 +198,20 @@ export default function ProfileScreen() {
   }, [preferences, jwt, currentUserId]);
 
   const handleSignOut = useCallback(() => {
-    clearLocalData().catch(() => {});
-    logout(jwt ?? undefined).catch(() => {});
-    setJwt(null); 
-    setAuthUser(null);
-    router.replace('/login');
-  }, [jwt, setJwt, setAuthUser, router]);
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.accent} />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (error) {
-    return (
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-        <View style={styles.centered}>
-          <Text style={styles.errorText}>Could not load profile</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => {
-            setLoading(true);
-            fetchData().finally(() => setLoading(false));
-          }}>
-            <Text style={styles.retryText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
+      Alert.alert(
+        'Sign out?',
+        'You will be returned to the login screen.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign out', style: 'destructive', onPress: async () => {
+              await clearLocalData();
+              setSessionId(null);
+              setAuthUser(null);
+              router.replace('/login');
+          }},
+        ]
+      );
+    }, [sessionId, setSessionId, setAuthUser, router]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>

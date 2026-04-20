@@ -19,6 +19,7 @@ class User(db.Model):
     pref_eval_audio = db.Column(db.Boolean, default=True, nullable=False)
     pref_eval_text = db.Column(db.Boolean, default=True, nullable=False)
 
+    consent_timestamp = db.Column(db.DateTime, nullable=True)
     # EVALUATION PREFERENCES
     stor_cons_image = db.Column(db.Boolean, default=True, nullable=False)
     stor_cons_audio = db.Column(db.Boolean, default=True, nullable=False)

@@ -14,22 +14,28 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { getUser, loginUser, saveUser } from "../services/apiService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useAuth } from "../hooks/useAuth";
+import { persistAuthSession } from "@/services/db";
+import { useAuth } from "@/hooks/useAuth";
+
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const { user, setUser, jwt, setJwt } = useAuth();
-
-  useEffect(() => {console.log(user, jwt)},[user, jwt]);
+  const { setUser: setAuthUser, setSessionId } = useAuth();
 
   const handleLogin = async () => {
     const res = await loginUser(email, password);
 
     console.log("RES:", res);
 
-    if (res.access_token && res.user_id) {      
+    if (res.access_token && res.user_id) {
+      await saveToken(res.access_token);
+      const userId = res.user_id.toString();
+      await AsyncStorage.setItem("user_id", userId);
+      setAuthUser(res.user);
+      setCurrentUserId(res.user_id);
+      setSessionId(res.user_id); 
       try {
         await saveUser(res);
         console.log("persistAuthSession done ✅");

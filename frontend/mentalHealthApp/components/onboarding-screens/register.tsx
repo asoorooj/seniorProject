@@ -15,13 +15,16 @@ import { Feather } from '@expo/vector-icons';
 // import { registerUser } from '@/services/apiService'; // uncomment when backend is running
 // TODO (auth team): import saveAuth from '@/services/auth' and call saveAuth(data.token, data.user.id, data.user.email) after successful registration to persist the auth token
 import { switchUserAndSync } from '@/services/sync/syncController';
-import { registerUser, saveUser } from '../../services/apiService';
-  
+import { setCurrentUserId } from '@/services/db';
+import { registerUser, saveToken } from '../../constants/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '@/hooks/useAuth';
+import { persistAuthSession } from '@/services/db';
 
 export default function RegisterScreen() {
   const router = useRouter();
   const { agreed: agreedParam } = useLocalSearchParams();
-
+  const { setUser: setAuthUser, setSessionId } = useAuth();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -184,31 +187,46 @@ export default function RegisterScreen() {
               style={styles.createAccountButton}
               activeOpacity={0.8}
               onPress={async () => {
+
                 if (!agreed) {
                   setShowTermsError(true);
                   return;
                 }
 
                 if (password !== confirmPassword) {
-                  console.log("Passwords do not match");
+                  setError("Passwords do not match");
                   return;
                 }
 
+                setLoading(true);
                 try {
                   const res = await registerUser(email, password);
-
                   console.log("REGISTER RESPONSE:", res);
 
-                  if (res.token) {
-                    await saveUser(res);
-                    console.log("Registered successfully");
+                  if (res.token && res.user_id) {
+                    await saveToken(res.token);
+                    const userId = res.user_id.toString();
+                    await AsyncStorage.setItem("user_id", userId);
+                    setCurrentUserId(res.user_id);
 
+                    try {
+                            await persistAuthSession(res.user, res.user_id);
+                            console.log("persistAuthSession done ✅");
+                          } catch (e) {
+                            console.log("persistAuthSession FAILED ❌", e); 
+                          }
+                    setAuthUser(res.user);        // ✅ set auth state
+                    setSessionId(res.user_id);    // ✅ set session
+                    router.replace("/register");       // ✅ navigate to main app
                     router.replace("/(tabs)");
                   } else {
-                    console.log(res.error);
+                    setError(res.error ?? "Registration failed");
                   }
                 } catch (err) {
                   console.log("REGISTER ERROR:", err);
+                  setError("Something went wrong");
+                } finally {
+                  setLoading(false);
                 }
               }}
             >
