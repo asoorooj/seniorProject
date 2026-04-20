@@ -30,6 +30,8 @@ Todo:
 - Navigation - currently routes are constantly overlapping and being placed on top of one another, which degrades performance. ensure navigation is handled so there is only one instance of a screen at a time.
 - chat bot needs to be tested still to see how it works with current cahnges. unable to do so a this moment due to high request rate.
 - Discuss ai usage, because free tier won't be able to handle the amount of uses quick eval + statistic summary + chat bot
+- Sign up/register needs to navigate user to home page
+- Name isn't saved, if necessary we can update db
 
 
 If there is anything else or any comments please let me know and i'll try to help :O
