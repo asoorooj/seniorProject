@@ -30,6 +30,8 @@ function getDb() {
 
 async function createCoreSchema(database: SQLiteDatabase) {
 
+  // await resetLocalTables(database);
+
   console.log("CREATE CORE SCHEMA");
 
   await database.execAsync(`
@@ -141,7 +143,7 @@ async function createCoreSchema(database: SQLiteDatabase) {
     `);
 }
 
-async function resetLocalTables(database: SQLiteDatabase) {
+export async function resetLocalTables(database: SQLiteDatabase) {
 
   console.log("RESET TABLES");
 

@@ -80,7 +80,7 @@ export const getUser = async (): Promise<User | null> => {
   };
 };
 
-export const registerUser = async (email: string, password: string) => {
+export const registerUser = async (email: string, password: string):Promise<{message:string, user:User, access_token:string, user_id:number}> => {
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: "POST",
     headers: {
@@ -89,11 +89,10 @@ export const registerUser = async (email: string, password: string) => {
     body: JSON.stringify({
       email,
       password,
-      consent_chat: true,
-      consent_image: true,
-      consent_audio: true,
     }),
   });
+
+  if(!res.ok) throw new Error(`failed to register ${JSON.stringify(res)}`);
 
   return res.json();
 };

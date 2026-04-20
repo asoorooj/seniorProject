@@ -14,8 +14,5 @@ export default function Index() {
     }
   }, [loading, user, jwt, router]);
 
-  if (loading) {
-    return null;
-  }
   return <WelcomeScreen />;
 }

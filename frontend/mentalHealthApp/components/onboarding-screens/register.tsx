@@ -18,7 +18,7 @@ import { switchUserAndSync } from '@/services/sync/syncController';
 import { registerUser, saveUser } from '../../services/apiService';
   
 
-export default function RegisterScreen() {
+export default function RegisterScreen() { 
   const router = useRouter();
   const { agreed: agreedParam } = useLocalSearchParams();
 
@@ -199,13 +199,13 @@ export default function RegisterScreen() {
 
                   console.log("REGISTER RESPONSE:", res);
 
-                  if (res.token) {
+                  if (res.access_token) {
                     await saveUser(res);
                     console.log("Registered successfully");
 
                     router.replace("/(tabs)");
                   } else {
-                    console.log(res.error);
+                    console.warn(res);
                   }
                 } catch (err) {
                   console.log("REGISTER ERROR:", err);

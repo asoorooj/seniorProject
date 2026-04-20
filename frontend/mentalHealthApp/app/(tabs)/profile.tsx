@@ -21,10 +21,9 @@ import { DayScore } from '@/components/home/WeeklyChart';
 import { colors } from '@/assets/styles/colors';
 import { sectionLabel } from "@/assets/styles/text";
 import {
-  fetchCurrentUser,
+  fetchUserProfile,
   logout,
   type UserPreferences,
-  updateUserPreferences,
 } from '@/services/apiService';
 import {
   getEmotionsCache,
@@ -98,7 +97,7 @@ export default function ProfileScreen() {
       let user:UserProfile = {
         name:authUser?.email ?? PLACEHOLDER_USER.name,
         memberSince: String(authUser?.created_at) ?? PLACEHOLDER_USER.memberSince,
-        scans: PLACEHOLDER_USER.scans,
+        scans: authUser?.journalCount ?? PLACEHOLDER_USER.scans,
         journals: authUser?.journalCount ?? count,
         streak: authUser?.streak ?? 0
       };
@@ -120,7 +119,7 @@ export default function ProfileScreen() {
     setError(false);
     try {
         await syncAllUnsynced(jwt, "action");
-        const currentUser = await fetchCurrentUser();
+        const currentUser = await fetchUserProfile();
         if (currentUser?.user?.preferences) {
           setPreferences(currentUser.user.preferences);
         }

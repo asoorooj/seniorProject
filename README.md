@@ -36,3 +36,7 @@ Todo:
 
 If there is anything else or any comments please let me know and i'll try to help :O
 
+4/20
+
+- I merged main to have aidan's latest changes will ensure they work smoothly by eod, today
+
