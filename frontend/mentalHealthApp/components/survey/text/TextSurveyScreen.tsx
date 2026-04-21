@@ -21,6 +21,7 @@ import {
   type UserPreferences,
 } from '@/services/apiService';
 import { DEFAULT_EVALUATION_PREFERENCES } from '@/services/evaluationFlow';
+import { useAuth } from '@/hooks/useAuth';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG           = '#1E1830';
@@ -407,20 +408,16 @@ export default function TextSurveyScreen() {
   const audioLabel   = params.audioLabel ?? 'Neutral';
   const audioConf    = params.audioConf  ?? '0';
   const audioSkipped = params.audioSkipped ?? 'false';
-  const preferences: UserPreferences = {
-    pref_eval_image: params.prefFace ? params.prefFace === 'true' : DEFAULT_EVALUATION_PREFERENCES.pref_eval_image,
-    pref_eval_audio: params.prefAudio ? params.prefAudio === 'true' : DEFAULT_EVALUATION_PREFERENCES.pref_eval_audio,
-    pref_eval_text: params.prefText ? params.prefText === 'true' : DEFAULT_EVALUATION_PREFERENCES.pref_eval_text,
-  };
-
   const [step,    setStep]    = useState<TextStep>('prompt-select');
   const [prompts] = useState<string[]>(pickPrompts);
   const [prompt,  setPrompt]  = useState('');
   const [text,    setText]    = useState('');
   const [result,  setResult]  = useState<EmotionResult | null>(null);
 
+  const { user } = useAuth();
+
   useEffect(() => {
-    if (!preferences.pref_eval_text) {
+    if (!(user?.preferences?.pref_eval_text)) {
       router.replace({
         pathname: '/survey-results' as any,
         params: {

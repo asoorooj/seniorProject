@@ -363,8 +363,6 @@ export default function FaceSurveyScreen() {
   const [result,        setResult]        = useState<EmotionResult | null>(null);
   const [permission,    requestPermission] = useCameraPermissions();
   const [evaluationId, setEvaluationId] = useState<number | null>(null);
-  const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_EVALUATION_PREFERENCES);
-  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
 
 
   useEffect(() => {
@@ -373,10 +371,6 @@ export default function FaceSurveyScreen() {
       if (!user) return;
       const currentUser = await fetchCurrentUser();
       if (!mounted) return;
-      if (currentUser?.user?.preferences) {
-        setPreferences(currentUser.user.preferences);
-      }
-      setPreferencesLoaded(true);
     };
     loadPreferences();
     return () => {
@@ -396,17 +390,17 @@ export default function FaceSurveyScreen() {
   const routeAfterFace = (
     nextEvaluationId: number | null,
     routeParams: Record<string, string> = {},
-    nextPreferences = preferences
+    nextPreferences = user?.preferences
   ) => {
-    const nextModality = getNextModality('face', nextPreferences);
+    const nextModality = 'audio';
     if (nextModality === 'audio') {
       router.replace({
         pathname: '/survey-audio' as any,
         params: {
           evaluationId: nextEvaluationId,
-          prefFace: String(nextPreferences.pref_eval_image),
-          prefAudio: String(nextPreferences.pref_eval_audio),
-          prefText: String(nextPreferences.pref_eval_text),
+          prefFace: String(nextPreferences?.pref_eval_image ?? false),
+          prefAudio: String(nextPreferences?.pref_eval_audio ?? false),
+          prefText: String(nextPreferences?.pref_eval_text ?? false),
           ...routeParams,
         },
       });
@@ -417,9 +411,9 @@ export default function FaceSurveyScreen() {
         pathname: '/survey-text' as any,
         params: {
           evaluationId: String(nextEvaluationId),
-          prefFace: String(nextPreferences.pref_eval_image),
-          prefAudio: String(nextPreferences.pref_eval_audio),
-          prefText: String(nextPreferences.pref_eval_text),
+          prefFace: String(nextPreferences?.pref_eval_image),
+          prefAudio: String(nextPreferences?.pref_eval_audio),
+          prefText: String(nextPreferences?.pref_eval_text),
           ...routeParams,
         },
       });
@@ -429,35 +423,36 @@ export default function FaceSurveyScreen() {
       pathname: '/survey-results' as any,
       params: {
           evaluationId: String(nextEvaluationId),
-          prefFace: String(nextPreferences.pref_eval_image),
-        prefAudio: String(nextPreferences.pref_eval_audio),
-        prefText: String(nextPreferences.pref_eval_text),
+          prefFace: String(nextPreferences?.pref_eval_image ?? false),
+        prefAudio: String(nextPreferences?.pref_eval_audio ?? false),
+        prefText: String(nextPreferences?.pref_eval_text ?? false),
         ...routeParams,
       },
     });
   };
-
-  useEffect(()=>{
-    ensureEvaluation();
-  },[]);
-
   useEffect(() => {
-    if (!preferencesLoaded) return;
-    if (!hasAnyEnabledModality(preferences)) {
-      Alert.alert(
-        'No evaluation steps enabled',
-        'Turn on at least one evaluation preference from your profile to start a check-in.',
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
-      return;
-    }
+    // if (!preferencesLoaded) return;
+    const useEffectAction = async function(){
+      console.log(user?.preferences)
+      if (hasAnyEnabledModality((user?.preferences ?? {pref_eval_audio:false, pref_eval_image:false, pref_eval_text:false}))) {
+        Alert.alert(
+          'No evaluation steps enabled',
+          'Turn on at least one evaluation preference from your profile to start a check-in.',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+        return;
+      }
+      let nextEvalId = await ensureEvaluation();
 
-    if (!preferences.pref_eval_image) {
-      ensureEvaluation().then((nextEvaluationId) => {
-        routeAfterFace(nextEvaluationId, { faceSkipped: 'true' }, preferences);
-      });
-    }
-  }, [preferencesLoaded, preferences]);
+      console.log("[ENABLED]",(user?.preferences?.pref_eval_image))
+      if (!(user?.preferences?.pref_eval_image)) {
+          routeAfterFace(nextEvalId, { faceSkipped: 'true' }, {pref_eval_audio:false, pref_eval_image:false, pref_eval_text:false});
+      }
+    };
+    useEffectAction();
+  }, []);
+
+  useEffect(()=>{console.log("[EVAL CHANGED]",evaluationId)},[evaluationId])
   
   const handleBack = () => {
     if (step === 'intro'){

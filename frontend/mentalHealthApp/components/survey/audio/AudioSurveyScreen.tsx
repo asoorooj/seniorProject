@@ -23,6 +23,7 @@ import {
   DEFAULT_EVALUATION_PREFERENCES,
   getNextModality,
 } from '@/services/evaluationFlow';
+import { useAuth } from '@/hooks/useAuth';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG           = '#1E1830';
@@ -429,18 +430,15 @@ export default function AudioSurveyScreen() {
     const faceLabel    = params.faceLabel ?? 'Neutral';
     const faceConf     = params.faceConf  ?? '0';
     const faceSkipped  = params.faceSkipped ?? 'false';
-  const preferences: UserPreferences = {
-    pref_eval_image: params.prefFace ? params.prefFace === 'true' : DEFAULT_EVALUATION_PREFERENCES.pref_eval_image,
-    pref_eval_audio: params.prefAudio ? params.prefAudio === 'true' : DEFAULT_EVALUATION_PREFERENCES.pref_eval_audio,
-    pref_eval_text: params.prefText ? params.prefText === 'true' : DEFAULT_EVALUATION_PREFERENCES.pref_eval_text,
-  };
 
   const [step,   setStep]   = useState<AudioStep>('intro');
   const [uri,    setUri]    = useState('');
   const [result, setResult] = useState<EmotionResult | null>(null);
 
+  const { user } = useAuth();
+
   const routeAfterAudio = (routeParams: Record<string, string> = {}) => {
-    const nextModality = getNextModality('audio', preferences);
+    const nextModality = 'text';
     if (nextModality === 'text') {
       router.replace({
         pathname: '/survey-text' as any,
@@ -449,9 +447,9 @@ export default function AudioSurveyScreen() {
           faceLabel,
           faceConf,
           faceSkipped,
-          prefFace: String(preferences.pref_eval_image),
-          prefAudio: String(preferences.pref_eval_audio),
-          prefText: String(preferences.pref_eval_text),
+          prefFace: String(user?.preferences?.pref_eval_image ?? false),
+          prefAudio: String(user?.preferences?.pref_eval_audio ?? false),
+          prefText: String(user?.preferences?.pref_eval_text ?? false),
           ...routeParams,
         },
       });
@@ -465,19 +463,21 @@ export default function AudioSurveyScreen() {
         faceLabel,
         faceConf,
         faceSkipped,
-        prefFace: String(preferences.pref_eval_image),
-        prefAudio: String(preferences.pref_eval_audio),
-        prefText: String(preferences.pref_eval_text),
+        prefFace: String(user?.preferences?.pref_eval_image ?? false),
+        prefAudio: String(user?.preferences?.pref_eval_audio ?? false),
+        prefText: String(user?.preferences?.pref_eval_text ?? false),
         ...routeParams,
       },
     });
   };
 
   useEffect(() => {
-    if (!preferences.pref_eval_audio) {
+    if (!(user?.preferences?.pref_eval_audio)) {
       routeAfterAudio({ audioSkipped: 'true' });
     }
   }, []);
+
+  useEffect(()=>{console.log("[EVAL CHANGED]",evaluationId)},[evaluationId])
 
   const handleBack = () => {
     if (step === 'intro') {

@@ -13,6 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { cancelEvaluation, endEvaluation } from '@/services/apiService';
+import { syncAllUnsynced } from '@/services/sync/syncController';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG           = '#1E1830';
@@ -270,7 +271,10 @@ export default function ResultsScreen() {
       <Animated.View style={[styles.ctaWrap, { opacity: btnOpacity }]}>
         {!fusionModelData?.error && <TouchableOpacity
           style={styles.ctaButton}
-          onPress={() => router.replace('/(tabs)/journal')}
+          onPress={() => {
+            syncAllUnsynced();
+            router.replace('/(tabs)/journal');
+          }}
           activeOpacity={0.85}
         >
           <LinearGradient

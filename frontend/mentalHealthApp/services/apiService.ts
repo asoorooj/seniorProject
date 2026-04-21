@@ -426,9 +426,11 @@ export async function cancelEvaluation(evaluationId: number) {
 
   if (!res.ok) throw { status: res.status };
 
-  console.log("HERE",await res.json());
+  const data = await res.json();
 
-  return await res.json();
+  console.log(data)
+
+  return await data;
 }
 
 // ================= MEDIA =================
