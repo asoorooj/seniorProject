@@ -514,6 +514,7 @@ export default function FaceSurveyScreen() {
             routeAfterFace(evaluationId, {
               faceLabel: result?.emotion ?? 'Neutral',
               faceConf: String(Math.round((result?.confidence ?? 0) * 100)),
+              faceSkipped: 'false',
             });
           }}
           onRescan={handleRescan}

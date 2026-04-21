@@ -476,6 +476,7 @@ export default function TextSurveyScreen() {
         textConf:  String(Math.round(
           (result?.scores ? Math.max(...Object.values(result.scores)) : 0) * 100
         )),
+        textSkipped: 'false',
       },
     });
   };
