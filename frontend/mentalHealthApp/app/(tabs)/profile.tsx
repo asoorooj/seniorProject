@@ -12,23 +12,23 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ProfileCard } from '@/components/profile/ProfileCard';
-import { AvgWellbeingCard } from '@/components/profile/AvgWellbeingCard';
+import { AvatarPickerModal } from '@/components/profile/AvatarPickerModal';
 import { EmotionalProfileCard, EmotionTag } from '@/components/profile/EmotionalProfileCard';
 import { StoragePermissionsCard } from '@/components/profile/StoragePermissionsCard';
 import { ConsentPermissionsCard } from '@/components/profile/ConsentPermissionsCard';
 import { AccountCard } from '@/components/profile/AccountCard';
-import { DayScore } from '@/components/home/WeeklyChart';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '@/assets/styles/colors';
 import { sectionLabel } from "@/assets/styles/text";
 import {
   fetchUserProfile,
   logout,
   type UserPreferences,
+  type UserConsent,
 } from '@/services/apiService';
 import {
   getEmotionsCache,
   getProfileCache,
-  getScoresCache,
 } from '@/services/repositories/profileRepository';
 import {
   clearLocalData,
@@ -36,9 +36,6 @@ import {
 } from '@/services/sync/syncController';
 import { useAuth } from '@/hooks/useAuth';
 import { getTotalEvals } from '@/services/repositories/journalRepository';
-
-// Derive isToday from the current day of the week (0=Sun, 1=Mon, ..., 6=Sat)
-const DAYS: DayScore['day'][] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 // Placeholder data used until the API is connected
 const PLACEHOLDER_USER = {
@@ -48,13 +45,6 @@ const PLACEHOLDER_USER = {
   journals: 18,
   streak: 7,
 };
-
-const todayIndex = new Date().getDay();
-const PLACEHOLDER_SCORES: DayScore[] = DAYS.map((day, i) => ({
-  day,
-  score: [58, 40, 75, 88, 55, 100, 62][i],
-  isToday: i === todayIndex,
-}));
 
 const PLACEHOLDER_EMOTIONS: EmotionTag[] = [
   { label: 'Calm', variant: 'green' },
@@ -77,19 +67,26 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   pref_eval_audio: true,
 };
 
+const DEFAULT_CONSENT: UserConsent = {
+  stor_cons_image: true,
+  stor_cons_text: true,
+  stor_cons_audio: true,
+};
+
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { user: authUser, jwt, setJwt, setUser: setAuthUser, syncUserToCache: updateUserCache } = useAuth();
   const currentUserId = authUser?.id;
   const [user, setUser] = useState<UserProfile>(PLACEHOLDER_USER);
-  const [scores, setScores] = useState<DayScore[]>(PLACEHOLDER_SCORES);
   const [emotions, setEmotions] = useState<EmotionTag[]>(PLACEHOLDER_EMOTIONS);
+  const [avatarId, setAvatarId] = useState(0);
+  const [avatarPickerVisible, setAvatarPickerVisible] = useState(false);
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
+  const [consent, setConsent] = useState<UserConsent>(DEFAULT_CONSENT);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [savingPreferences, setSavingPreferences] = useState(false);
 
   useEffect(()=>{
     const getValues = async function(){
@@ -106,8 +103,14 @@ export default function ProfileScreen() {
         pref_eval_text: authUser?.preferences?.pref_eval_text ?? false,
         pref_eval_image: authUser?.preferences?.pref_eval_image ?? false
       };
+      let consent: UserConsent = {
+        stor_cons_audio: authUser?.storage_consent?.stor_cons_audio ?? true,
+        stor_cons_text: authUser?.storage_consent?.stor_cons_text ?? true,
+        stor_cons_image: authUser?.storage_consent?.stor_cons_image ?? true,
+      };
       setUser(user);
       setPreferences(preferences);
+      setConsent(consent);
       await updateUserCache();
     };
 
@@ -124,13 +127,11 @@ export default function ProfileScreen() {
           setPreferences(currentUser.user.preferences);
         }
       if(currentUserId){
-        const [localProfile, localScores, localEmotions] = await Promise.all([
+        const [localProfile, localEmotions] = await Promise.all([
           getProfileCache<UserProfile>(currentUserId),
-          getScoresCache<DayScore[]>(currentUserId),
           getEmotionsCache<EmotionTag[]>(currentUserId),
-        ]);      
+        ]);
         if (localProfile) setUser(localProfile);
-        if (localScores) setScores(localScores);
         if (localEmotions) setEmotions(localEmotions);
       }
     } catch (err) {
@@ -184,6 +185,25 @@ export default function ProfileScreen() {
     // setSavingPreferences(false);
   }, [preferences, jwt, currentUserId]);
 
+  const handleToggleConsent = useCallback((key: keyof UserConsent) => {
+    const nextConsent = { ...consent, [key]: !consent[key] };
+    setConsent(nextConsent);
+    if (authUser) {
+      setAuthUser({ ...authUser, storage_consent: { ...nextConsent } });
+    }
+  }, [consent, authUser, setAuthUser]);
+
+  useEffect(() => {
+    AsyncStorage.getItem('avatar_id').then((val) => {
+      if (val) setAvatarId(Number(val));
+    });
+  }, []);
+
+  const handleSelectAvatar = useCallback((id: number) => {
+    setAvatarId(id);
+    AsyncStorage.setItem('avatar_id', String(id));
+  }, []);
+
   const handleSignOut = useCallback(() => {
     clearLocalData().catch(() => {});
     logout(jwt ?? undefined).catch(() => {});
@@ -236,20 +256,29 @@ export default function ProfileScreen() {
           />
         }
       >
-        <ProfileCard {...user} />
+        <ProfileCard
+          {...user}
+          avatarId={avatarId}
+          onAvatarPress={() => setAvatarPickerVisible(true)}
+        />
+        <AvatarPickerModal
+          visible={avatarPickerVisible}
+          selectedId={avatarId}
+          onSelect={handleSelectAvatar}
+          onClose={() => setAvatarPickerVisible(false)}
+        />
 
         <View style={styles.content}>
-          <Text style={sectionLabel}>This Week</Text>
-          <AvgWellbeingCard data={scores} />
-
           <Text style={sectionLabel}>Your Emotional Profile</Text>
           <EmotionalProfileCard emotions={emotions} />
 
           <Text style={sectionLabel}>Data & Privacy</Text>
-          {/* <ConsentPermissionsCard /> */}
+          <ConsentPermissionsCard
+            consent={consent}
+            onToggle={handleToggleConsent}
+          />
           <StoragePermissionsCard
             preferences={preferences}
-            saving={savingPreferences}
             onToggle={handleTogglePreference}
           />
 
