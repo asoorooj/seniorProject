@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { colors } from "@/assets/styles/colors"
+import { colors } from '@/assets/styles/colors';
+import { getAvatarSource } from '@/constants/avatars';
 
 type Props = {
   name: string;
@@ -12,9 +13,19 @@ type Props = {
   scans: number;
   journals: number;
   streak: number;
+  avatarId: number;
+  onAvatarPress: () => void;
 };
 
-export const ProfileCard = React.memo(function ProfileCard({ name, memberSince, scans, journals, streak }: Props) {
+export const ProfileCard = React.memo(function ProfileCard({
+  name,
+  memberSince,
+  scans,
+  journals,
+  streak,
+  avatarId,
+  onAvatarPress,
+}: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
@@ -23,11 +34,22 @@ export const ProfileCard = React.memo(function ProfileCard({ name, memberSince, 
       colors={['#2A1F50', '#1E1830']}
       style={[styles.header, { paddingTop: insets.top + 24 }]}
     >
-      <View style={styles.avatarCircle}>
-        <MaterialIcons name="person" size={44} color="#C5BDE8" />
-      </View>
+      <TouchableOpacity onPress={onAvatarPress} activeOpacity={0.8} style={styles.avatarWrapper}>
+        {avatarId === 0 ? (
+          <View style={styles.avatarIconCircle}>
+            <MaterialIcons name="person" size={44} color="#C5BDE8" />
+          </View>
+        ) : (
+          <Image source={getAvatarSource(avatarId)} style={styles.avatarImage} />
+        )}
+        <View style={styles.editBadge}>
+          <MaterialIcons name="edit" size={12} color="#fff" />
+        </View>
+      </TouchableOpacity>
+
       <Text style={styles.name}>{name}</Text>
       <Text style={styles.memberSince}>{memberSince}</Text>
+
       <View style={styles.statsRow}>
         <View style={styles.statItem}>
           <Text style={styles.statNumber}>{scans}</Text>
@@ -54,14 +76,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     alignItems: 'center',
   },
-  avatarCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+  avatarWrapper: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    marginBottom: 14,
+  },
+  avatarIconCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     backgroundColor: 'rgba(155, 143, 232, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 14,
+    borderWidth: 2.5,
+    borderColor: 'rgba(155, 143, 232, 0.5)',
+  },
+  avatarImage: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 2.5,
+    borderColor: 'rgba(155, 143, 232, 0.5)',
+  },
+  editBadge: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#1E1830',
   },
   name: {
     fontSize: 24,
