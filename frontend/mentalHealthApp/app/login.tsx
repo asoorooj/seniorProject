@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,8 +14,11 @@ import { useRouter } from "expo-router";
 import { getUser, loginUser, saveUser } from "../services/apiService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "../hooks/useAuth";
+import { colors } from "@/assets/styles/colors";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 export default function LoginScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -38,7 +40,6 @@ export default function LoginScreen() {
       } catch (e) {
         console.warn("persistAuthSession FAILED ❌", e); 
       }
-      router.replace("/login");
       router.replace("/(tabs)");
       const token = await AsyncStorage.getItem("token");
       const user_id = await AsyncStorage.getItem("id");
@@ -53,7 +54,7 @@ export default function LoginScreen() {
     }
   };
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -65,7 +66,7 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
         >
 
-          <View style={styles.headerBlock}>
+          <View style={[styles.headerBlock, { paddingTop: insets.top + 16 }]}>
             <Text style={styles.title}>Welcome Back</Text>
             <Text style={styles.subtitle}>We&apos;re glad to see you again</Text>
           </View>
@@ -77,7 +78,7 @@ export default function LoginScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Email"
-                placeholderTextColor="#1E1830"
+                placeholderTextColor={colors.textSecondary}
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -89,7 +90,7 @@ export default function LoginScreen() {
               <TextInput
                 style={styles.passwordInput}
                 placeholder="Password"
-                placeholderTextColor="#1E1830"
+                placeholderTextColor={colors.textSecondary}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
@@ -104,7 +105,7 @@ export default function LoginScreen() {
                 <Feather
                   name={showPassword ? "eye-off" : "eye"}
                   size={22}
-                  color="#1E1830"
+                  color={colors.textPrimary}
                 />
               </TouchableOpacity>
             </View>
@@ -140,25 +141,25 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.background,
   },
   keyboardView: {
     flex: 1,
   },
   scroll: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 32,
-    paddingTop: 28,
     paddingBottom: 36,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.background,
   },
   screenLabel: {
     fontSize: 18,
     fontWeight: "500",
-    color: "#1E1830",
+    color: colors.textPrimary,
     opacity: 0.45,
     marginBottom: 24,
     paddingLeft: 4,
@@ -166,34 +167,43 @@ const styles = StyleSheet.create({
   headerBlock: {
     alignItems: "center",
     gap: 12,
-    paddingTop: 8,
   },
   title: {
     fontSize: 32,
     lineHeight: 38,
     fontWeight: "800",
-    color: "#000000",
+    color: colors.textPrimary,
     textAlign: "center",
+    letterSpacing: -0.4,
   },
   subtitle: {
-    fontSize: 18,
-    lineHeight: 25,
+    fontSize: 16,
+    lineHeight: 24,
     fontWeight: "500",
-    color: "#1E1830",
+    color: colors.accentDark,
     textAlign: "center",
   },
   spacer: {
     flex: 1,
-    minHeight: 220,
+    minHeight: 120,
   },
   formBlock: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
     gap: 14,
     paddingBottom: 20,
+    shadowColor: colors.textSecondary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 3,
   },
   inputGroup: {
     minHeight: 46,
-    backgroundColor: "#EDE8FF",
-    borderRadius: 8,
+    backgroundColor: colors.background,
+    borderRadius: 12,
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -203,7 +213,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     fontWeight: "400",
-    color: "#1E1830",
+    color: colors.textPrimary,
     paddingVertical: 12,
   },
   passwordInput: {
@@ -211,7 +221,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     fontWeight: "400",
-    color: "#1E1830",
+    color: colors.textPrimary,
     paddingVertical: 12,
     paddingRight: 12,
   },
@@ -228,13 +238,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     fontWeight: "700",
-    color: "#F27059",
+    color: colors.primary,
     textAlign: "right",
   },
   loginButton: {
-    minHeight: 46,
-    borderRadius: 8,
-    backgroundColor: "#F27059",
+    minHeight: 50,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 12,
@@ -249,21 +259,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     fontWeight: "800",
-    color: "#FFFFFF",
+    color: colors.surface,
   },
   registerRow: {
     alignItems: "center",
-    marginTop: 16,
+    marginTop: 12,
   },
   registerText: {
     fontSize: 16,
     lineHeight: 22,
     fontWeight: "400",
-    color: "#1E1830",
+    color: colors.textPrimary,
     textAlign: "center",
   },
   registerLink: {
     fontWeight: "700",
-    color: "#F27059",
+    color: colors.primary,
   },
 });

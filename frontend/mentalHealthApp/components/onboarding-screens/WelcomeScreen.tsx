@@ -5,24 +5,34 @@ import {
   Image,
   TouchableOpacity,
   View,
+  ScrollView,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { colors } from '@/assets/styles/colors';
 
 const WelcomeScreen = () => {
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
 
   const isWide = width >= 900;
+  const isCompactHeight = height < 760;
 
   return (
-    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
-      <View style={styles.content}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.content,
+          isCompactHeight && styles.contentCompact,
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={[styles.topGroup, isWide && styles.topGroupWide]}>
           <Image
             source={require('../../assets/images/logo.png')}
-            style={styles.logo}
+            style={[styles.logo, isCompactHeight && styles.logoCompact]}
             resizeMode="contain"
           />
 
@@ -53,7 +63,7 @@ const WelcomeScreen = () => {
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -61,17 +71,28 @@ const WelcomeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F5FF',
+    backgroundColor: colors.background,
+  },
+
+  scroll: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
 
   content: {
-    flex: 1,
+    flexGrow: 1,
     width: '100%',
     alignItems: 'center',
     paddingHorizontal: 28,
-    paddingTop: 100,
+    paddingTop: 56,
     paddingBottom: 40,
     justifyContent: 'space-between',
+    minHeight: '100%',
+  },
+
+  contentCompact: {
+    justifyContent: 'flex-start',
+    gap: 28,
   },
 
   topGroup: {
@@ -88,21 +109,26 @@ const styles = StyleSheet.create({
     height: 233,
     marginBottom: -20,
   },
+  logoCompact: {
+    width: 124,
+    height: 200,
+  },
 
   brandName: {
     fontSize: 36,
     fontWeight: '800',
-    color: '#2D2366',
+    color: colors.textPrimary,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
+    letterSpacing: -0.5,
   },
 
   tagline: {
     width: '100%',
-    fontWeight:'600',
+    fontWeight: '500',
     maxWidth: 520,
-    fontSize: 18,
-    color: '#9A8ED9',
+    fontSize: 16,
+    color: colors.accentDark,
     textAlign: 'center',
     lineHeight: 24,
   },
@@ -118,7 +144,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     width: '100%',
     height: 50,
-    backgroundColor: '#F27059',
+    backgroundColor: colors.primary,
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
@@ -131,7 +157,7 @@ const styles = StyleSheet.create({
   },
 
   primaryButtonText: {
-    color: '#FFFFFF',
+    color: colors.surface,
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 1,
@@ -143,13 +169,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#EAE5F5',
+    borderColor: colors.timelineLine,
     justifyContent: 'center',
     alignItems: 'center',
   },
 
   secondaryButtonText: {
-    color: '#F27059',
+    color: colors.primary,
     fontSize: 16,
     fontWeight: '800',
     textAlign: 'center',
