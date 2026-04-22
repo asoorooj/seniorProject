@@ -16,19 +16,51 @@ export type Recommendation = {
   exerciseDuration: string;
   exerciseInfo: string;
   steps: string[];
+  icon?: string;
 };
 
 type Props = {
-  data: Recommendation;
+  data: Recommendation | null;
+  loading?: boolean;
 };
 
-export function RecommendationCard({ data }: Props) {
+export function RecommendationCard({ data, loading }: Props) {
   const [showModal, setShowModal] = useState(false);
+
+  if (loading) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.label}>BASED ON YOUR LAST SCAN</Text>
+        <View style={styles.skeletonTitle} />
+        <View style={styles.skeletonBody} />
+        <View style={styles.skeletonBodyShort} />
+      </View>
+    );
+  }
+
+  if (!data) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.label}>BASED ON YOUR LAST SCAN</Text>
+        <View style={styles.emptyState}>
+          <View style={styles.emptyIconBg}>
+            <MaterialIcons name="self-improvement" size={28} color="#C4B8E8" />
+          </View>
+          <Text style={styles.emptyTitle}>No scan yet</Text>
+          <Text style={styles.emptyBody}>
+            Complete your first check-in to see personalized insights here.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const iconName = (data.icon ?? 'air') as React.ComponentProps<typeof MaterialIcons>['name'];
 
   return (
     <>
       <View style={styles.card}>
-        <Text style={styles.label}>BASED ON YESTERDAY</Text>
+        <Text style={styles.label}>BASED ON YOUR LAST SCAN</Text>
         <Text style={styles.title}>{data.title}</Text>
         <Text style={styles.body}>{data.description}</Text>
         <TouchableOpacity
@@ -36,7 +68,7 @@ export function RecommendationCard({ data }: Props) {
           onPress={() => setShowModal(true)}
           activeOpacity={0.85}
         >
-          <Text style={styles.buttonText}>Learn More</Text>
+          <Text style={styles.buttonText}>Try This</Text>
           <MaterialIcons name="arrow-forward" size={16} color="#9B8FE8" />
         </TouchableOpacity>
       </View>
@@ -55,7 +87,7 @@ export function RecommendationCard({ data }: Props) {
             </TouchableOpacity>
             <View style={styles.iconRow}>
               <View style={styles.iconBg}>
-                <MaterialIcons name="air" size={32} color="#9B8FE8" />
+                <MaterialIcons name={iconName} size={32} color="#9B8FE8" />
               </View>
             </View>
             <Text style={styles.modalTitle}>{data.exerciseTitle}</Text>
@@ -116,6 +148,55 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#9B8FE8',
+  },
+
+  // Loading skeleton
+  skeletonTitle: {
+    height: 20,
+    borderRadius: 6,
+    backgroundColor: '#E0D9F5',
+    marginBottom: 10,
+    width: '65%',
+  },
+  skeletonBody: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#E0D9F5',
+    marginBottom: 6,
+  },
+  skeletonBodyShort: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#E0D9F5',
+    width: '50%',
+  },
+
+  // Empty state
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 8,
+  },
+  emptyIconBg: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#E8E2F8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1E1830',
+  },
+  emptyBody: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#9E8FB8',
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: 8,
   },
 
   // Modal
