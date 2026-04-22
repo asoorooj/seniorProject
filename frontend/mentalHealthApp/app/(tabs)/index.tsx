@@ -205,7 +205,12 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+      <View pointerEvents="none" style={styles.topBounceBackdrop} />
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         <HomeHeader
           username={
             user?.email
@@ -241,12 +246,25 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
+    backgroundColor: 'transparent',
+  },
+  scrollContent: {
+    flexGrow: 1,
     backgroundColor: '#F8F5FF',
+  },
+  topBounceBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 360,
+    backgroundColor: '#2A1F50',
   },
   body: {
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 110,
     gap: 16,
+    backgroundColor: '#F8F5FF',
   },
 });
