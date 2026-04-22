@@ -1,9 +1,7 @@
 import { API_BASE } from "../constants/api";
 import { User } from "../hooks/useAuth"
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { clearDatabase, executeSqlAsync } from "./db";
-import { getRecentMessages, upsertServerMessages } from "./repositories/chatRepository";
-import { Message } from "@/components/chat/Message";
+import { clearDatabase } from "./db";
 import { getEntriesForRange, RawEntry, trimToRecentWeeks, upsertServerEntries } from "./repositories/journalRepository";
 export type UserPreferences = {
   pref_eval_text: boolean;
@@ -216,18 +214,18 @@ export const syncUser = async (user:User) => {
 
 export async function fetchChatHistory(params: {
   jwt?: string;
-  beforeDate?: Date; //change to time
-  cursor?: string | null;
+  beforeTs?: string;
+  beforeId?: number;
   limit?: number;
 }) {
-  const { beforeDate, cursor, limit, jwt } = params;
+  const { beforeTs, beforeId, limit, jwt } = params;
 
   let url = `${API_BASE}/chat/history`;
 
   const query: string[] = [];
 
-  if (cursor) query.push(`cursor=${encodeURIComponent(cursor)}`);
-  // if (beforeId) query.push(`before_id=${beforeId}`);
+  if (beforeTs) query.push(`before_ts=${encodeURIComponent(beforeTs)}`);
+  if (typeof beforeId === "number") query.push(`before_id=${beforeId}`);
   if (limit) query.push(`limit=${limit}`);
 
   if (query.length > 0) {
@@ -240,23 +238,23 @@ export async function fetchChatHistory(params: {
 
   console.log("[api] FINAL URL:", url); // 🔥 debug
 
-  let messages:Message[] = [];
-
   const res = await fetch(url, { headers });
-  const data = await res.json();
-  if (!res.ok){
-    try{
-      messages = await getRecentMessages();
-      
-    } catch(error) {
-      return messages;
-    }
-  } else {
-    await upsertServerMessages(data?.messages); //Remove messages out of cache range
-    messages = await getRecentMessages();
+  const data = await safeJson(res);
+  if (!res.ok) {
+    throw {
+      status: res.status,
+      message: data?.error ?? "failed to fetch chat history",
+    };
   }
 
-  return messages;
+  return {
+    messages: data?.messages ?? [],
+    has_more: Boolean(data?.has_more),
+    next_before_id:
+      typeof data?.next_before_id === "number" ? data.next_before_id : null,
+    next_before_ts:
+      typeof data?.next_before_ts === "string" ? data.next_before_ts : null,
+  };
 }
 
 

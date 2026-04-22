@@ -141,7 +141,7 @@ def get_current_user():
     try:
         user = g.current_user
         print(user)
-        count = Evaluation.query.filter_by(user_id=user.id).count()
+        count = Evaluation.query.filter_by(user_id=user.id).filter(Evaluation.label.isnot(None)).filter(Evaluation.label != "").count()
         print(count)
         return jsonify({
             "user": {
@@ -1133,6 +1133,10 @@ def chat_with_gemini():
 def get_chat_history_endpoint():
     user = g.current_user
     user_id = user.id
+    before_ts_raw = request.args.get("before_ts")
+    before_ts, err = _parse_iso_dt(before_ts_raw, "before_ts")
+    if err:
+        return _json_error(err, 400)
     before_id = request.args.get("before_id", type=int)
     limit = request.args.get("limit", type=int) or 20
 
@@ -1142,7 +1146,12 @@ def get_chat_history_endpoint():
     if limit <= 0 or limit > 50:
         return _json_error("limit must be between 1 and 50", 400)
 
-    payload = get_chat_history(user_id, limit=limit, before_id=before_id)
+    payload = get_chat_history(
+        user_id,
+        limit=limit,
+        before_id=before_id,
+        before_ts=before_ts,
+    )
     return jsonify(payload), 200
 
 def convert_m4a_bytes_to_wav_bytes(m4a_bytes: bytes) -> bytes:

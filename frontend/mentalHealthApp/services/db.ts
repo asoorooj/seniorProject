@@ -28,6 +28,55 @@ function getDb() {
   return db;
 }
 
+function parseTimestampToEpochMs(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    // Accept seconds-era numbers and normalize to ms.
+    return value < 1_000_000_000_000 ? Math.trunc(value * 1000) : Math.trunc(value);
+  }
+  if (typeof value === "string") {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return numeric < 1_000_000_000_000
+        ? Math.trunc(numeric * 1000)
+        : Math.trunc(numeric);
+    }
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+async function migrateTableTimestampsToInteger(
+  database: SQLiteDatabase,
+  table: "messages" | "evaluations"
+) {
+  const rows = await database.getAllAsync<{ rowid: number; timestamp: unknown }>(
+    `SELECT rowid, timestamp FROM ${table};`
+  );
+  let migrated = 0;
+  for (const row of rows) {
+    const parsed = parseTimestampToEpochMs(row.timestamp);
+    if (parsed == null) continue;
+    if (typeof row.timestamp === "number" && Math.trunc(row.timestamp) === parsed) {
+      continue;
+    }
+    await database.runAsync(
+      `UPDATE ${table} SET timestamp = ? WHERE rowid = ?;`,
+      [parsed, row.rowid] as any
+    );
+    migrated += 1;
+  }
+  if (migrated > 0) {
+    console.log(`[db] migrated ${migrated} ${table}.timestamp values to epoch ms`);
+  }
+}
+
+async function migrateLegacyTimestampStorage(database: SQLiteDatabase) {
+  await migrateTableTimestampsToInteger(database, "messages");
+  await migrateTableTimestampsToInteger(database, "evaluations");
+}
+
 async function createCoreSchema(database: SQLiteDatabase) {
 
   // await resetLocalTables(database);
@@ -46,7 +95,7 @@ async function createCoreSchema(database: SQLiteDatabase) {
         role TEXT NOT NULL,              -- "user" | "assistant"
         textMessage TEXT NOT NULL,
         emotion_label TEXT,
-        timestamp TEXT,
+        timestamp INTEGER,
         client_status TEXT DEFAULT 'sent',
 
         synced INTEGER DEFAULT 0,
@@ -61,7 +110,7 @@ async function createCoreSchema(database: SQLiteDatabase) {
         id INTEGER PRIMARY KEY,
         user_id INTEGER,
 
-        timestamp TEXT,
+        timestamp INTEGER,
         label TEXT,
         scores TEXT,                     -- JSON string
         suggestion TEXT,
@@ -136,6 +185,8 @@ async function createCoreSchema(database: SQLiteDatabase) {
       ON text_evaluations (evaluation_id);
       CREATE INDEX IF NOT EXISTS idx_messages_updated_at
       ON messages (updated_at);
+      CREATE INDEX IF NOT EXISTS idx_messages_user_ts_id
+      ON messages (user_id, timestamp, id);
       CREATE INDEX IF NOT EXISTS idx_evaluations_timestamp
       ON evaluations (timestamp);
       CREATE INDEX IF NOT EXISTS idx_outbox_user_created
@@ -168,6 +219,7 @@ export async function initDb() {
 
     // await resetLocalTables(database);
     await createCoreSchema(database);
+    await migrateLegacyTimestampStorage(database);
 
     console.log("[db] init complete");
   })();

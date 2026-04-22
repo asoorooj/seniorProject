@@ -18,25 +18,23 @@ import { Message } from "../components/chat/Message";
 import ChatInput from "../components/chat/ChatInput";
 import {
   getAllMessages,
+  getEarliestCursorFromIncoming,
   getLatestUserEmotionLabel,
-  getRecentMessages,
+  getOldestSyncedCursor,
   upsertServerMessages,
 } from "@/services/repositories/chatRepository";
 import { useAuth } from "@/hooks/useAuth";
-import { executeSqlAsync } from "@/services/db";
 import { fetchChatHistory, sendChatMessage } from "@/services/apiService";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function ChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView | null>(null);
   const hasMoreRef = useRef<boolean>(true);
-  const nextBeforeId = useRef<number|undefined>(undefined);
+  const nextCursorRef = useRef<{ beforeTs?: string; beforeId?: number }>({});
   const isFetchingHistory = useRef<boolean>(false);
   const isAtBottomRef = useRef<boolean>(true);
   const isAtTopRef = useRef<boolean>(false);
-  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [messageEmotion, setMessageEmotion] = useState<string|undefined>(undefined);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -69,85 +67,128 @@ export default function ChatScreen() {
     });
   };
 
-  const getNextBeforeIdFromApi = (apiMessages: any[]) => {
-    const ids = apiMessages
-      .map((message: any) => message.id ?? message.server_id)
-      .filter((id: any) => typeof id === "number");
-    if (ids.length === 0) return undefined;
-    return Math.min(...ids);
-  };
-
-  const scheduleRetryIfNeeded = () => {
-    if (!isAtTopRef.current) return;
-    if (!hasMoreRef.current || !nextBeforeId.current) return;
-    if (retryTimeoutRef.current) return;
-    console.log("[chat] retry_scheduled", { beforeId: nextBeforeId.current });
-    retryTimeoutRef.current = setTimeout(() => {
-      retryTimeoutRef.current = null;
-      console.log("[chat] retry_fire", { beforeId: nextBeforeId.current });
-      fetchHistory(nextBeforeId.current);
-    }, 2000);
-  };
-
-  const clearRetry = () => {
-    if (retryTimeoutRef.current) {
-      clearTimeout(retryTimeoutRef.current);
-      retryTimeoutRef.current = null;
+  const mergeMessages = (existing: Message[], incoming: Message[]) => {
+    const byKey = new Map<string, Message>();
+    for (const message of [...existing, ...incoming]) {
+      const key = messageKey(message);
+      byKey.set(key, message);
     }
+    return Array.from(byKey.values()).sort(
+      (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
+    );
   };
 
-const fetchHistory = async (beforeId?: number) => {
+  const fetchHistory = async (loadOlder?: boolean) => {
   if (isFetchingHistory.current) return;
   isFetchingHistory.current = true;
 
   try {
-    // =========================
-    // 1. LOAD LOCAL FIRST (UI ALWAYS STABLE)
-    // =========================
-    if (!beforeId) {
+    if (!loadOlder) {
       let localMessages = await getAllMessages(user?.id);
+      console.log("[chat] initial_open local_count", localMessages.length);
 
-      if (!localMessages || localMessages.length === 0) {
-        localMessages = [
+      const emotion = await getLatestUserEmotionLabel(user?.id);
+      setMessageEmotion(emotion ?? undefined);
+      if (localMessages.length > 0) {
+        setMessages(localMessages);
+      } else {
+        // Keep chat empty while we attempt server fetch. Fallback message only if both local+server are empty.
+        setMessages([]);
+      }
+
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollToEnd({ animated: false });
+      });
+
+      const page = await fetchChatHistory({
+        jwt: jwt ?? undefined,
+        limit: chatPageLimit,
+      });
+      console.log("[chat] initial_open server_page", page);
+
+      const incoming = page.messages ?? [];
+      if (incoming.length > 0) {
+        await upsertServerMessages(incoming, user?.id);
+      }
+
+      const refreshed = await getAllMessages(user?.id);
+      console.log("[chat] initial_open refreshed_local_count", refreshed.length);
+      if (refreshed.length > 0) {
+        setMessages(refreshed);
+      } else {
+        setMessages([
           new Message({
             isUser: false,
             textMessage: "Wanna get something off your mind? Let's talk.",
             timestamp: new Date(),
           }),
-        ];
+        ]);
       }
 
-      const emotion = await getLatestUserEmotionLabel(user?.id);
-      setMessageEmotion(emotion ?? undefined);
-      setMessages(localMessages);
-
-      requestAnimationFrame(() => {
-        scrollRef.current?.scrollToEnd({ animated: false });
-      });
+      hasMoreRef.current = Boolean(page.has_more);
+      if (page.next_before_ts) {
+        nextCursorRef.current = {
+          beforeTs: page.next_before_ts,
+          beforeId: page.next_before_id ?? undefined,
+        };
+      }
+      return;
     }
 
-    // =========================
-    // 2. SERVER SYNC (BACKGROUND ONLY)
-    // =========================
-    try {
+    let cursor = nextCursorRef.current;
+    if (!cursor.beforeTs) {
+      const oldest = await getOldestSyncedCursor(user?.id);
+      if (oldest) {
+        cursor = oldest;
+        nextCursorRef.current = oldest;
+      }
+    }
 
-      const data = await fetchChatHistory({});
-      setMessages(data);
+    const page = await fetchChatHistory({
+      jwt: jwt ?? undefined,
+      beforeTs: cursor.beforeTs,
+      beforeId: cursor.beforeId,
+      limit: chatPageLimit,
+    });
+
+    console.log("[PAGE]", page)
+
+    const incoming = page.messages ?? [];
+    let earliestIncoming:
+      | { beforeTs: string; beforeId: number }
+      | null = null;
+    if (incoming.length > 0) {
+      await upsertServerMessages(incoming, user?.id);
+      earliestIncoming = getEarliestCursorFromIncoming(incoming);
+      if (earliestIncoming) {
+        nextCursorRef.current = earliestIncoming;
+      }
+      const incomingMessages = mapApiMessages(incoming);
+      setMessages((previous) => mergeMessages(previous, incomingMessages));
       setMessageEmotion(await getLatestUserEmotionLabel(user?.id));
-
-    } catch (err) {
-      console.warn("[chat] server fetch failed, keeping current UI");
     }
 
-    clearRetry();
+    hasMoreRef.current = Boolean(page.has_more);
+    if (page.next_before_ts) {
+      nextCursorRef.current = {
+        beforeTs: page.next_before_ts,
+        beforeId: page.next_before_id ?? undefined,
+      };
+    } else if (earliestIncoming) {
+      nextCursorRef.current = earliestIncoming;
+    }
+  } catch (error) {
+    console.warn("[chat] fetch history failed", error);
   } finally {
     isFetchingHistory.current = false;
   }
-};
+  };
 
-useEffect(() => {
-  fetchHistory();
-}, []);
+  useEffect(() => {
+    if (!user?.id) return;
+    console.log("[chat] mounted/open -> fetch initial history");
+    fetchHistory(false);
+  }, [user?.id]);
 
   const handleScroll = (event: any) => {
     const { contentOffset, contentSize, layoutMeasurement } = event?.nativeEvent || {};
@@ -157,8 +198,8 @@ useEffect(() => {
     const distanceFromBottom = contentHeight - viewHeight - yOffset;
     isAtBottomRef.current = distanceFromBottom <= 20;
     isAtTopRef.current = yOffset <= 20;
-    if (yOffset <= 20 && hasMoreRef.current && nextBeforeId.current) {
-      fetchHistory(nextBeforeId.current);
+    if (yOffset <= 20 && hasMoreRef.current) {
+      fetchHistory(true);
     }
   };
 
@@ -182,10 +223,13 @@ const handleSendMessage = async (text: string) => {
 
   try {
     // 2. Call API
+    console.log("[TEXT IT LOL]",text);
     const data = await sendChatMessage({
       jwt: jwt ?? undefined,
       message: text,
     });
+    console.log("[DATA IT LOL]",data);
+
 
     const userMsg = data.user_message;
     const assistantMsg = data.response_message;

@@ -16,6 +16,27 @@ export interface RawEntry {
 
 type ServerEvaluation = Record<string, any>;
 
+function toEpochMs(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value < 1_000_000_000_000 ? Math.trunc(value * 1000) : Math.trunc(value);
+  }
+  if (typeof value === "string") {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return numeric < 1_000_000_000_000
+        ? Math.trunc(numeric * 1000)
+        : Math.trunc(numeric);
+    }
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return Date.now();
+}
+
+function epochMsToIso(value: unknown): string {
+  return new Date(toEpochMs(value)).toISOString();
+}
+
 function maxScore(scores: Record<string, unknown> | null | undefined): number {
   if (!scores) return 0;
   const entries = Object.entries(scores).filter(([k]) => k !== "_raw_label");
@@ -59,7 +80,7 @@ export async function upsertServerEntries(
       [
         evaluationId,
         userId ?? await AsyncStorage.getItem("id"),
-        evaluation.timestamp ?? new Date().toISOString(),
+        toEpochMs(evaluation.timestamp ?? Date.now()),
         evaluation.label ?? "unknown",
         JSON.stringify(evaluation.scores ?? {}),
         evaluation.suggestion ?? null,
@@ -150,8 +171,8 @@ export async function getEntriesForRange(params: {
      LEFT JOIN audio_evaluations a ON a.evaluation_id = e.id
      LEFT JOIN text_evaluations t ON t.evaluation_id = e.id
      WHERE e.user_id = ? AND e.timestamp >= ? AND e.timestamp < ?
-     ORDER BY datetime(e.timestamp) ASC, e.id ASC;`,
-    [userId ?? await AsyncStorage.getItem('id'), start.toISOString(), end.toISOString()]
+     ORDER BY e.timestamp ASC, e.id ASC;`,
+    [userId ?? await AsyncStorage.getItem('id'), start.getTime(), end.getTime()]
   );
 
   const rows = result.rows as any;
@@ -165,7 +186,7 @@ export async function getEntriesForRange(params: {
 
     items.push({
       id: String(row.id),
-      timestamp: row.timestamp,
+      timestamp: epochMsToIso(row.timestamp),
       mood: row.label ?? "unknown",
       score: maxScore(evaluationScores),
       face: {
@@ -212,7 +233,7 @@ export async function trimToRecentWeeks(
        SELECT id FROM evaluations
        WHERE user_id = ? AND synced = 1 AND (timestamp < ? OR label IS NULL OR label = '' OR label = 'unknown')
      );`,
-    [userId, cutoffStart.toISOString()]
+    [userId, cutoffStart.getTime()]
   );
   await executeSqlAsync(
     `DELETE FROM image_evaluations
@@ -220,7 +241,7 @@ export async function trimToRecentWeeks(
        SELECT id FROM evaluations
        WHERE user_id = ? AND synced = 1 AND (timestamp < ? OR label IS NULL OR label = '' OR label = 'unknown')
      );`,
-    [userId, cutoffStart.toISOString()]
+    [userId, cutoffStart.getTime()]
   );
   await executeSqlAsync(
     `DELETE FROM text_evaluations
@@ -228,12 +249,12 @@ export async function trimToRecentWeeks(
        SELECT id FROM evaluations
        WHERE user_id = ? AND synced = 1 AND (timestamp < ? OR label IS NULL OR label = '' OR label = 'unknown')
      );`,
-    [userId, cutoffStart.toISOString()]
+    [userId, cutoffStart.getTime()]
   );
   await executeSqlAsync(
     `DELETE FROM evaluations
      WHERE user_id = ? AND synced = 1 AND (timestamp < ? OR label IS NULL OR label = '' OR label = 'unknown');`,
-    [userId, cutoffStart.toISOString()]
+    [userId, cutoffStart.getTime()]
   );
 }
 
@@ -267,7 +288,7 @@ export async function getLatestEntry(userId?: number): Promise<RawEntry | null> 
      LEFT JOIN audio_evaluations a ON a.evaluation_id = e.id
      LEFT JOIN text_evaluations t ON t.evaluation_id = e.id
      WHERE e.user_id = ?
-     ORDER BY datetime(e.timestamp) DESC
+     ORDER BY e.timestamp DESC
      LIMIT 1;`,
     [userId ?? await AsyncStorage.getItem('id')]
   );
@@ -283,7 +304,7 @@ export async function getLatestEntry(userId?: number): Promise<RawEntry | null> 
 
   return {
     id: String(row.id),
-    timestamp: row.timestamp,
+    timestamp: epochMsToIso(row.timestamp),
     mood: row.label ?? 'unknown',
     score: maxScore(evaluationScores),
     face: { score: maxScore(faceScores), label: row.image_label ?? 'unknown' },

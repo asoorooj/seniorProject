@@ -1,8 +1,10 @@
 import os
 import uuid
+from datetime import timezone
 
 from google.genai import types
 from google import genai
+from sqlalchemy import and_, or_
 
 from app.extensions import db
 from app.models.db_models import Message
@@ -167,12 +169,25 @@ def create_chat_with_id(user_id):
     chat = createChat(history=history)
     return chat
 
-def get_chat_history(user_id, limit=20, before_id=None):
+def get_chat_history(user_id, limit=20, before_id=None, before_ts=None):
     query = Message.query.filter_by(user_id=user_id)
-    if before_id is not None:
+    if before_ts is not None and before_ts.tzinfo is not None:
+        before_ts = before_ts.astimezone(timezone.utc).replace(tzinfo=None)
+
+    if before_ts is not None and before_id is not None:
+        query = query.filter(
+            or_(
+                Message.timestamp < before_ts,
+                and_(Message.timestamp == before_ts, Message.id < before_id),
+            )
+        )
+    elif before_ts is not None:
+        query = query.filter(Message.timestamp < before_ts)
+    elif before_id is not None:
         query = query.filter(Message.id < before_id)
+
     rows = (
-        query.order_by(Message.id.desc())
+        query.order_by(Message.timestamp.desc(), Message.id.desc())
         .limit(limit)
         .all()
     )
@@ -189,11 +204,14 @@ def get_chat_history(user_id, limit=20, before_id=None):
     ]
     messages.reverse()
     has_more = len(rows) == limit
-    next_before_id = rows[-1].id if rows else None
+    cursor_row = rows[-1] if rows else None
+    next_before_id = cursor_row.id if cursor_row else None
+    next_before_ts = cursor_row.timestamp.isoformat() if cursor_row and cursor_row.timestamp else None
     return {
         "messages": messages,
         "has_more": has_more,
         "next_before_id": next_before_id,
+        "next_before_ts": next_before_ts,
     }
 
 def statistic_analysis(statistics):

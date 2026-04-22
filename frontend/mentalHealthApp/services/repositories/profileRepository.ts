@@ -69,7 +69,7 @@ export async function getProfileCache<T = unknown>(userId?:number) {
   const counts = (countsResult.rows as any).item(0) ?? { scans: 0, journals: 0 };
 
   const streakRows = await executeSqlAsync(
-    `SELECT DISTINCT DATE(timestamp) AS day
+    `SELECT DISTINCT DATE(timestamp / 1000, 'unixepoch') AS day
      FROM evaluations
      WHERE user_id = ?
      ORDER BY day DESC;`,
@@ -130,13 +130,13 @@ export async function getScoresCache<T = unknown>(userId?:number) {
     `SELECT timestamp, scores
      FROM evaluations
      WHERE user_id = ? AND timestamp >= ? AND timestamp < ?;`,
-    [userId ?? await AsyncStorage.getItem("id"), weekStart.toISOString(), weekEnd.toISOString()]
+    [userId ?? await AsyncStorage.getItem("id"), weekStart.getTime(), weekEnd.getTime()]
   );
 
   const byDay: Record<number, number[]> = {};
   for (let i = 0; i < (result.rows as any).length; i += 1) {
     const row = (result.rows as any).item(i);
-    const day = new Date(row.timestamp).getDay();
+    const day = new Date(Number(row.timestamp)).getDay();
     byDay[day] = byDay[day] ?? [];
     byDay[day].push(scoreFromScoresJson(row.scores));
   }

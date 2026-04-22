@@ -5,6 +5,31 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const DEFAULT_LIMIT = 50;
 
 type ServerMessage = Record<string, any>;
+export type HistoryCursor = {
+  beforeTs: string;
+  beforeId: number;
+};
+
+function toEpochMs(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value < 1_000_000_000_000 ? Math.trunc(value * 1000) : Math.trunc(value);
+  }
+  if (typeof value === "string") {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return numeric < 1_000_000_000_000
+        ? Math.trunc(numeric * 1000)
+        : Math.trunc(numeric);
+    }
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return Date.now();
+}
+
+function epochMsToIso(value: number): string {
+  return new Date(value).toISOString();
+}
 
 function normalizeServerMessage(message: ServerMessage) {
   const serverId = Number(message.id ?? message.server_id ?? 0);
@@ -15,8 +40,9 @@ function normalizeServerMessage(message: ServerMessage) {
       : message.role === "user";
   const textMessage =
     message.textMessage ?? message.text_message ?? message.message ?? "";
-  const timestamp =
-    message.timestamp ?? message.created_at ?? new Date().toISOString();
+  const timestampMs = toEpochMs(
+    message.timestamp ?? message.created_at ?? Date.now()
+  );
   const emotionLabel = message.emotionLabel ?? message.emotion_label ?? null;
 
   return {
@@ -24,18 +50,9 @@ function normalizeServerMessage(message: ServerMessage) {
     userId,
     role: isUser ? "user" : "assistant",
     textMessage: String(textMessage),
-    timestamp: new Date(timestamp).toISOString(),
+    timestampMs,
     emotionLabel,
   };
-}
-
-async function resolveJwt(
-  userId?: number,
-  jwt?: string
-): Promise<string | null> {
-  await initDb();
-  if (jwt) return jwt;
-  return await AsyncStorage.getItem("token");
 }
 
 async function getNextLocalMessageId(): Promise<number> {
@@ -49,10 +66,10 @@ async function getNextLocalMessageId(): Promise<number> {
 function rowToMessage(row: any) {
   return new Message({
     id: row.id ?? undefined,
-    userId: row.userId ?? undefined,
+    userId: row.user_id ?? row.userId ?? undefined,
     isUser: row.role === "user",
     textMessage: row.textMessage ?? "",
-    timestamp: row.timestamp ? new Date(row.timestamp) : new Date(),
+    timestamp: new Date(toEpochMs(row.timestamp)),
     status:
       row.client_status === "sending" || row.client_status === "failed"
         ? row.client_status
@@ -65,15 +82,26 @@ export async function getRecentMessages(
   userId?: number
 ) {
   await initDb();
+  const resolvedUserId = userId ?? Number(await AsyncStorage.getItem("id"));
   const result = await executeSqlAsync(
-    `SELECT *
-    FROM messages
-    WHERE user_id = ?
-      AND deleted_at IS NULL
-      AND synced = 1
-    ORDER BY datetime(timestamp) ASC
-    LIMIT ?;`,
-    [userId ?? Number(await AsyncStorage.getItem("id")), limit]
+    `SELECT m.*
+     FROM messages m
+     WHERE m.user_id = ?
+       AND m.deleted_at IS NULL
+       AND (
+         m.synced = 0
+         OR m.id IN (
+           SELECT id
+           FROM messages
+           WHERE user_id = ?
+             AND synced = 1
+             AND deleted_at IS NULL
+           ORDER BY timestamp DESC, id DESC
+           LIMIT ?
+         )
+       )
+     ORDER BY m.timestamp ASC, m.id ASC;`,
+    [resolvedUserId, resolvedUserId, limit]
   );
 
   const rows = result.rows as any;
@@ -89,29 +117,50 @@ export async function getAllMessages(userId?: number) {
 }
 
 export async function getHistoryPage(params: {
-  beforeServerId?: number;
+  beforeTs?: string | number;
+  beforeId?: number;
   limit?: number;
   userId: number;
 }) {
-  const { beforeServerId, limit = 20, userId } = params;
+  const { beforeTs, beforeId, limit = 20, userId } = params;
   await initDb();
 
-  if (!beforeServerId) {
+  if (beforeTs == null) {
     return getRecentMessages(limit, userId);
   }
+  const beforeTsMs = toEpochMs(beforeTs);
 
-  const result = await executeSqlAsync(
-    `SELECT m.*
-     FROM messages m
-     WHERE user_id = ?
-       AND m.deleted_at IS NULL
-       AND m.synced = 1
-       AND m.id > 0
-       AND m.id < ?
-     ORDER BY m.id DESC
-     LIMIT ?;`,
-    [userId, beforeServerId, limit]
-  );
+  let result;
+  if (typeof beforeId === "number") {
+    result = await executeSqlAsync(
+      `SELECT m.*
+       FROM messages m
+       WHERE m.user_id = ?
+         AND m.deleted_at IS NULL
+         AND m.synced = 1
+         AND m.id > 0
+         AND (
+           m.timestamp < ?
+           OR (m.timestamp = ? AND m.id < ?)
+         )
+       ORDER BY m.timestamp DESC, m.id DESC
+       LIMIT ?;`,
+      [userId, beforeTsMs, beforeTsMs, beforeId, limit]
+    );
+  } else {
+    result = await executeSqlAsync(
+      `SELECT m.*
+       FROM messages m
+       WHERE m.user_id = ?
+         AND m.deleted_at IS NULL
+         AND m.synced = 1
+         AND m.id > 0
+         AND m.timestamp < ?
+       ORDER BY m.timestamp DESC, m.id DESC
+       LIMIT ?;`,
+      [userId, beforeTsMs, limit]
+    );
+  }
 
   const rows = result.rows as any;
   const items: Message[] = [];
@@ -119,6 +168,40 @@ export async function getHistoryPage(params: {
     items.push(rowToMessage(rows.item(i)));
   }
   return items.reverse();
+}
+
+export function getEarliestCursorFromIncoming(
+  messages: ServerMessage[]
+): HistoryCursor | null {
+  let earliest: HistoryCursor | null = null;
+
+  for (const message of messages ?? []) {
+    const normalized = normalizeServerMessage(message);
+    if (!normalized.serverId) continue;
+
+    if (!earliest) {
+      earliest = {
+        beforeTs: epochMsToIso(normalized.timestampMs),
+        beforeId: normalized.serverId,
+      };
+      continue;
+    }
+
+    const normalizedTs = normalized.timestampMs;
+    const earliestTs = new Date(earliest.beforeTs).getTime();
+    if (!Number.isFinite(normalizedTs) || !Number.isFinite(earliestTs)) {
+      continue;
+    }
+    const tsDiff = normalizedTs - earliestTs;
+    if (tsDiff < 0 || (tsDiff === 0 && normalized.serverId < earliest.beforeId)) {
+      earliest = {
+        beforeTs: epochMsToIso(normalized.timestampMs),
+        beforeId: normalized.serverId,
+      };
+    }
+  }
+
+  return earliest;
 }
 
 export async function addLocalMessage(params: {
@@ -138,7 +221,7 @@ export async function addLocalMessage(params: {
 
   const localId = await getNextLocalMessageId();
   const nowIso = new Date().toISOString();
-  const ts = timestamp.toISOString();
+  const ts = timestamp.getTime();
 
   await executeSqlAsync(
     `INSERT INTO messages
@@ -191,7 +274,7 @@ export async function upsertServerMessages(
         normalized.role,
         normalized.textMessage,
         normalized.emotionLabel,
-        normalized.timestamp,
+        normalized.timestampMs,
         nowIso,
       ]
     );
@@ -240,21 +323,30 @@ export async function updateMessageStatus(
   );
 }
 
-export async function getOldestServerId(userId?: number) {
+export async function getOldestSyncedCursor(
+  userId?: number
+): Promise<HistoryCursor | null> {
   await initDb();
   const result = await executeSqlAsync(
-    `SELECT m.id AS message_id
+    `SELECT m.id AS message_id, m.timestamp AS timestamp
      FROM messages m
      WHERE user_id = ?
        AND m.synced = 1
        AND m.id > 0
        AND m.deleted_at IS NULL
-     ORDER BY m.id ASC
+     ORDER BY m.timestamp ASC, m.id ASC
      LIMIT 1;`,
     [userId ?? Number(await AsyncStorage.getItem("id"))]
   );
   const row = (result.rows as any).item(0);
-  return row?.message_id ?? null;
+  const messageId = Number(row?.message_id ?? 0);
+  if (!row?.timestamp || !messageId) {
+    return null;
+  }
+  return {
+    beforeTs: epochMsToIso(toEpochMs(row.timestamp)),
+    beforeId: messageId,
+  };
 }
 
 export async function getLatestUserEmotionLabel(
@@ -268,7 +360,7 @@ export async function getLatestUserEmotionLabel(
        AND m.role = 'user'
        AND m.emotion_label IS NOT NULL
        AND m.deleted_at IS NULL
-     ORDER BY datetime(m.timestamp) DESC, m.id DESC
+     ORDER BY m.timestamp DESC, m.id DESC
      LIMIT 1;`,
     [userId  ?? Number(await AsyncStorage.getItem("id"))]
   );
@@ -293,7 +385,7 @@ export async function trimSyncedMessages(
         WHERE user_id = ?
           AND synced = 1
           AND deleted_at IS NULL
-        ORDER BY datetime(timestamp) DESC, id DESC
+        ORDER BY timestamp DESC, id DESC
         LIMIT ?
       );`,
     [userId, userId, limit]

@@ -291,7 +291,6 @@ useEffect(() => {
 
             
             rawEntries = data;
-            console.log("[JOURNAL DATA]",rawEntries)
 
             // fallback to local if API returned nothing
             if (rawEntries.length === 0) {
