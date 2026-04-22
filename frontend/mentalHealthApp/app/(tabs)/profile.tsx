@@ -88,10 +88,14 @@ export default function ProfileScreen() {
   useEffect(()=>{
     const getValues = async function(){
       const count = (await getTotalEvals())["COUNT(*)"];
+      const rawDate = authUser?.created_at;
+      const memberSince = rawDate
+        ? `Member since ${new Date(rawDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
+        : PLACEHOLDER_USER.memberSince;
       let user:UserProfile = {
         name:authUser?.email ?? PLACEHOLDER_USER.name,
-        memberSince: String(authUser?.created_at) ?? PLACEHOLDER_USER.memberSince,
-        scans: authUser?.journalCount ?? PLACEHOLDER_USER.scans,
+        memberSince,
+        scans: count ?? PLACEHOLDER_USER.scans,
         journals: authUser?.journalCount ?? count,
         streak: authUser?.streak ?? 0
       };
@@ -239,6 +243,7 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <View pointerEvents="none" style={styles.topBounceBackdrop} />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.body}
@@ -293,10 +298,21 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
+    backgroundColor: 'transparent',
+  },
+  topBounceBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 360,
+    backgroundColor: '#2A1F50',
   },
   body: {
+    flexGrow: 1,
     paddingBottom: 110,
     gap: 0,
+    backgroundColor: colors.background,
   },
   content: {
     paddingHorizontal: 20,
