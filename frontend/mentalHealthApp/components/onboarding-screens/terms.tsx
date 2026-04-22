@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { colors } from '@/assets/styles/colors';
 
 export default function TermsScreen() {
   const router = useRouter();
@@ -29,7 +30,7 @@ export default function TermsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -105,17 +106,17 @@ export default function TermsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F5FF',
+    backgroundColor: colors.background,
   },
 
   scroll: {
     flex: 1,
-    backgroundColor: '#F8F5FF',
+    backgroundColor: colors.background,
   },
 
   scrollContent: {
     flexGrow: 1,
-    backgroundColor: '#F8F5FF',
+    backgroundColor: colors.background,
   },
 
   headerSection: {
@@ -138,8 +139,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 36,
     textAlign: 'center',
-    color: '#1E1830',
+    color: colors.textPrimary,
     marginBottom: 18,
+    letterSpacing: -0.4,
   },
 
   subtitle: {
@@ -149,7 +151,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     lineHeight: 22,
     textAlign: 'center',
-    color: '#1E1830',
+    color: colors.textSecondary,
   },
 
   bodySection: {
@@ -168,11 +170,11 @@ const styles = StyleSheet.create({
 
   contentCard: {
     width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 25,
+    backgroundColor: colors.surface,
+    borderRadius: 24,
     paddingVertical: 24,
     paddingHorizontal: 24,
-    shadowColor: '#1E1830',
+    shadowColor: colors.textPrimary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 4,
@@ -184,7 +186,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     lineHeight: 24,
-    color: '#1E1830',
+    color: colors.textPrimary,
     marginBottom: 10,
     marginTop: 8,
   },
@@ -193,7 +195,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '400',
     lineHeight: 28,
-    color: '#1E1830',
+    color: colors.textPrimary,
     marginBottom: 22,
   },
 
@@ -201,7 +203,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 50,
     borderRadius: 999,
-    backgroundColor: '#F27059',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
@@ -216,6 +218,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 16,
     textAlign: 'center',
-    color: '#FFFFFF',
+    color: colors.surface,
   },
 });

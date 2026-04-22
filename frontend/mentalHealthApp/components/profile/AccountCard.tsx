@@ -1,43 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
-import { capsule } from "@/assets/styles/colors";
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_BASE } from "@/constants/api";
-
-type User = {
-  id: number;
-  email: string;
-  external_id: string;
-};
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { capsule, colors } from "@/assets/styles/colors";
+import { useAuth } from '@/hooks/useAuth';
 
 type Props = {
   onSignOut: () => void;
 };
 
 export function AccountCard({ onSignOut }: Props) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchUser();
-  }, []);
-
-  const fetchUser = async () => {
-    try {
-      const token = await AsyncStorage.getItem("token"); // or however you store it
-      const response = await fetch("http://{API_BASE}/user/me", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const data = await response.json();
-      setUser(data);
-    } catch (e) {
-      console.log("Failed to fetch user:", e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { user } = useAuth();
+  const email = user?.email ?? 'No email available';
 
   const handleSignOut = () => {
     Alert.alert(
@@ -52,39 +24,61 @@ export function AccountCard({ onSignOut }: Props) {
 
   return (
     <View style={capsule}>
-      {loading ? (
-        <ActivityIndicator />
-      ) : (
-        <>
-          <Text style={styles.email}>{user?.email}</Text>
-          <Text style={styles.id}>ID: {user?.external_id}</Text>
-        </>
-      )}
-      <TouchableOpacity style={styles.button} onPress={handleSignOut}>
-        <Text style={styles.signOut}>Sign Out</Text>
-      </TouchableOpacity>
+      <View style={styles.row}>
+        <View style={styles.accountInfo}>
+          <Text style={styles.label}>Signed in as</Text>
+          <Text style={styles.email} numberOfLines={1} ellipsizeMode="middle">
+            {email}
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.button} onPress={handleSignOut} activeOpacity={0.85}>
+          <Text style={styles.signOut}>Sign Out</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  button: {
-    width: '100%',
+  row: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 10,
+  },
+  accountInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   email: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: 4,
+    color: colors.textPrimary,
   },
-  id: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 12,
+  button: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: '#FCE7E6',
+    borderWidth: 1,
+    borderColor: '#F4C4C2',
   },
   signOut: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
-    color: '#E53935',
+    color: colors.primary,
+  },
+  note: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 16,
   },
 });

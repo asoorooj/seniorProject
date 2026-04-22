@@ -13,6 +13,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { updateConsent } from '@/services/apiService';
+import { colors } from '@/assets/styles/colors';
+import { sectionLabel } from '@/assets/styles/text';
 
 type ConsentKey = 'consentImage' | 'consentAudio' | 'consentChat';
 
@@ -50,7 +52,7 @@ export default function OnboardingScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, isWide && styles.scrollContentWide]}
@@ -85,11 +87,11 @@ export default function OnboardingScreen() {
                   <Feather
                     name={consent[item.key] ? 'check-square' : 'square'}
                     size={22}
-                    color={consent[item.key] ? '#F27059' : '#9E95B0'}
+                    color={consent[item.key] ? colors.primary : colors.accentDark}
                     style={styles.checkIcon}
                   />
                   <View style={styles.consentIconBox}>
-                    <Feather name={item.icon} size={18} color="#2A1F50" />
+                    <Feather name={item.icon} size={18} color={colors.textPrimary} />
                   </View>
                   <View style={styles.consentText}>
                     <Text style={styles.consentItemLabel}>{item.label}</Text>
@@ -110,7 +112,7 @@ export default function OnboardingScreen() {
             disabled={loading}
           >
             {loading
-              ? <ActivityIndicator color="#fff" />
+              ? <ActivityIndicator color={colors.surface} />
               : <Text style={styles.continueButtonText}>Continue</Text>
             }
           </TouchableOpacity>
@@ -129,8 +131,8 @@ export default function OnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F5FF' },
-  scroll:    { flex: 1, backgroundColor: '#F8F5FF' },
+  container: { flex: 1, backgroundColor: colors.background },
+  scroll:    { flex: 1, backgroundColor: colors.background },
 
   scrollContent: {
     paddingHorizontal: 28,
@@ -161,10 +163,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 38,
     textAlign: 'center',
-    color: '#1E1830',
+    color: colors.textPrimary,
     marginBottom: 40,
+    letterSpacing: -0.4,
   },
-  titleTablet: { fontSize: 24, lineHeight: 32 },
+  titleTablet: { fontSize: 28, lineHeight: 34 },
 
   description: {
     width: '100%',
@@ -172,7 +175,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '400',
     lineHeight: 28,
-    color: '#1E1830',
+    color: colors.textPrimary,
     opacity: 0.85,
     marginBottom: 28,
   },
@@ -180,17 +183,13 @@ const styles = StyleSheet.create({
 
   // ── Consent checklist
   consentLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6D6680',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
+    ...sectionLabel,
     marginBottom: 12,
     alignSelf: 'flex-start',
   },
   consentCard: {
     width: '100%',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     paddingVertical: 4,
     marginBottom: 10,
@@ -212,20 +211,20 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 9,
-    backgroundColor: '#F0EDFF',
+    backgroundColor: colors.accentLight,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
     flexShrink: 0,
   },
   consentText:      { flex: 1 },
-  consentItemLabel: { fontSize: 15, fontWeight: '700', color: '#1E1830', marginBottom: 3 },
-  consentItemDesc:  { fontSize: 13, color: '#6D6680', lineHeight: 18 },
-  divider:          { height: 1, backgroundColor: '#F0EDFF', marginHorizontal: 16 },
+  consentItemLabel: { fontSize: 15, fontWeight: '700', color: colors.textPrimary, marginBottom: 3 },
+  consentItemDesc:  { fontSize: 13, color: colors.textSecondary, lineHeight: 18 },
+  divider:          { height: 1, backgroundColor: colors.accentLight, marginHorizontal: 16 },
 
   consentNote: {
     fontSize: 12,
-    color: '#9E95B0',
+    color: colors.accentDark,
     alignSelf: 'center',
     marginBottom: 28,
   },
@@ -234,7 +233,7 @@ const styles = StyleSheet.create({
   continueButton: {
     width: '100%',
     height: 52,
-    backgroundColor: '#F27059',
+    backgroundColor: colors.primary,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
@@ -251,7 +250,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 24,
     textAlign: 'center',
-    color: '#FFFFFF',
+    color: colors.surface,
   },
 
   // ── Privacy
@@ -267,7 +266,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '400',
     lineHeight: 22,
-    color: '#1E1830',
+    color: colors.textPrimary,
     textAlign: 'center',
     flexShrink: 1,
   },

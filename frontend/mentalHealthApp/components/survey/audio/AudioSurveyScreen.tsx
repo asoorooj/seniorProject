@@ -534,6 +534,7 @@ export default function AudioSurveyScreen() {
             routeAfterAudio({
               audioLabel: result?.emotion ?? 'Neutral',
               audioConf: String(Math.round((result?.confidence ?? 0) * 100)),
+              audioSkipped: 'false',
             })
           }          
           onRerecord={handleRerecord}

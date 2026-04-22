@@ -53,9 +53,10 @@ export function StoragePermissionsCard({ preferences, saving = false, onToggle }
 
 const styles = StyleSheet.create({
   header: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    gap: 2,
     marginBottom: 18,
   },
   title: {

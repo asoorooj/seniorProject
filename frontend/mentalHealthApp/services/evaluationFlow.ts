@@ -3,15 +3,15 @@ import type { UserPreferences } from "@/services/apiService";
 export type EvaluationModality = "face" | "audio" | "text";
 
 export const DEFAULT_EVALUATION_PREFERENCES: UserPreferences = {
-  eval_face: true,
-  eval_audio: true,
-  eval_text: true,
+  pref_eval_image: true,
+  pref_eval_audio: true,
+  pref_eval_text: true,
 };
 
 const modalityToPreferenceKey: Record<EvaluationModality, keyof UserPreferences> = {
-  face: "eval_face",
-  audio: "eval_audio",
-  text: "eval_text",
+  face: "pref_eval_image",
+  audio: "pref_eval_audio",
+  text: "pref_eval_text",
 };
 
 export function isModalityEnabled(
@@ -23,9 +23,9 @@ export function isModalityEnabled(
 
 export function hasAnyEnabledModality(preferences: UserPreferences) {
   return (
-    preferences.eval_face ||
-    preferences.eval_audio ||
-    preferences.eval_text
+    preferences.pref_eval_image ||
+    preferences.pref_eval_audio ||
+    preferences.pref_eval_text
   );
 }
 
