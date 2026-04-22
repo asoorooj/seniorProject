@@ -30,12 +30,9 @@ import {
   getEmotionsCache,
   getProfileCache,
 } from '@/services/repositories/profileRepository';
-import {
-  clearLocalData,
-  syncAllUnsynced,
-} from '@/services/sync/syncController';
 import { useAuth } from '@/hooks/useAuth';
 import { getTotalEvals } from '@/services/repositories/journalRepository';
+import { clearDatabase } from '@/services/db';
 
 // Placeholder data used until the API is connected
 const PLACEHOLDER_USER = {
@@ -121,7 +118,6 @@ export default function ProfileScreen() {
   const fetchData = useCallback(async () => {
     setError(false);
     try {
-        await syncAllUnsynced(jwt, "action");
         const currentUser = await fetchUserProfile();
         if (currentUser?.user?.preferences) {
           setPreferences(currentUser.user.preferences);
@@ -205,7 +201,7 @@ export default function ProfileScreen() {
   }, []);
 
   const handleSignOut = useCallback(() => {
-    clearLocalData().catch(() => {});
+    clearDatabase();
     logout(jwt ?? undefined).catch(() => {});
     setJwt(null); 
     setAuthUser(null);

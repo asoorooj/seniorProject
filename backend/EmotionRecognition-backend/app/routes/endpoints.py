@@ -1,4 +1,5 @@
 import base64
+import calendar
 import os
 import requests
 import time
@@ -301,6 +302,8 @@ def test_get_evaluations_by_date():
         Evaluation.query.filter_by(user_id=user_id)
         .filter(Evaluation.timestamp >= start_utc)
         .filter(Evaluation.timestamp < end_utc)
+        .filter(Evaluation.label.isnot(None))
+        .filter(Evaluation.label != "")
         .order_by(Evaluation.id.desc())
         .all()
     )
@@ -408,7 +411,9 @@ def get_evaluations_by_month():
             Evaluation.query
             .filter_by(user_id=user_id)
             .filter(Evaluation.timestamp >= start_date)
-            .filter(Evaluation.timestamp <= end_date)
+            .filter(Evaluation.timestamp <= end_date)            
+            .filter(Evaluation.label.isnot(None))
+            .filter(Evaluation.label != "")
             .order_by(Evaluation.id.desc())
             .all()
         )
@@ -786,6 +791,12 @@ def start_evaluation_face():
                 data=None
             )
             db.session.add(image_eval)
+
+        if user.stor_cons_image:
+            print("Will store image")
+        else:
+            print("Will NOT store image")
+
         db.session.flush() 
         db.session.commit() 
     except Exception as e:        
@@ -832,6 +843,12 @@ def start_eval_text():
                 data=text
             )
             db.session.add(text_eval)
+
+        if user.stor_cons_text:
+            print("Will store text")
+        else:
+            print("Will NOT store text")
+
         db.session.flush()
         db.session.commit()
     except Exception:
@@ -907,6 +924,12 @@ def start_eval_audio():
                     data=None
                 )
                 db.session.add(audio_eval)
+
+            if user.stor_cons_audio:
+                print("Will store audio")
+            else:
+                print("Will NOT store audio")
+
             db.session.flush()
             db.session.commit()
         except Exception:
@@ -994,18 +1017,36 @@ def end_evaluation():
         evaluation.suggestion = suggestion
 
         now = datetime.now()
+
+        # today range
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+        # yesterday range
         yesterday_start = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         yesterday_end = yesterday_start.replace(hour=23, minute=59, second=59, microsecond=999999)
-        exists = Evaluation.query.filter(
+
+        # check if user had an evaluation yesterday
+        had_yesterday = Evaluation.query.filter(
             Evaluation.user_id == user.id,
             Evaluation.timestamp >= yesterday_start,
             Evaluation.timestamp <= yesterday_end,
-        ).first is not None
-        print(exists)
-        if(not exists):
+        ).first() is not None
+
+        # check if user already has an evaluation today
+        had_today = Evaluation.query.filter(
+            Evaluation.user_id == user.id,
+            Evaluation.timestamp >= today_start,
+            Evaluation.timestamp <= today_end,
+        ).first() is not None
+
+        # if no evaluation yesterday, reset streak
+        if not had_yesterday:
             user.streak = 0
 
-        user.streak = user.streak + 1
+        # if no evaluation today yet, this is the first one today, so increment
+        if not had_today:
+            user.streak += 1
 
         db.session.commit()
     except Exception as e:

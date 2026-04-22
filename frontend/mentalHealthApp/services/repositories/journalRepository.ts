@@ -210,7 +210,7 @@ export async function trimToRecentWeeks(
     `DELETE FROM audio_evaluations
      WHERE evaluation_id IN (
        SELECT id FROM evaluations
-       WHERE user_id = ? AND synced = 1 AND timestamp < ?
+       WHERE user_id = ? AND synced = 1 AND (timestamp < ? OR label IS NULL OR label = '' OR label = 'unknown')
      );`,
     [userId, cutoffStart.toISOString()]
   );
@@ -218,7 +218,7 @@ export async function trimToRecentWeeks(
     `DELETE FROM image_evaluations
      WHERE evaluation_id IN (
        SELECT id FROM evaluations
-       WHERE user_id = ? AND synced = 1 AND timestamp < ?
+       WHERE user_id = ? AND synced = 1 AND (timestamp < ? OR label IS NULL OR label = '' OR label = 'unknown')
      );`,
     [userId, cutoffStart.toISOString()]
   );
@@ -226,13 +226,13 @@ export async function trimToRecentWeeks(
     `DELETE FROM text_evaluations
      WHERE evaluation_id IN (
        SELECT id FROM evaluations
-       WHERE user_id = ? AND synced = 1 AND timestamp < ?
+       WHERE user_id = ? AND synced = 1 AND (timestamp < ? OR label IS NULL OR label = '' OR label = 'unknown')
      );`,
     [userId, cutoffStart.toISOString()]
   );
   await executeSqlAsync(
     `DELETE FROM evaluations
-     WHERE user_id = ? AND synced = 1 AND timestamp < ?;`,
+     WHERE user_id = ? AND synced = 1 AND (timestamp < ? OR label IS NULL OR label = '' OR label = 'unknown');`,
     [userId, cutoffStart.toISOString()]
   );
 }

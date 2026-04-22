@@ -17,18 +17,14 @@ import MessageBubble from "../components/chat/MessageBubble";
 import { Message } from "../components/chat/Message";
 import ChatInput from "../components/chat/ChatInput";
 import {
+  getAllMessages,
   getLatestUserEmotionLabel,
   getRecentMessages,
+  upsertServerMessages,
 } from "@/services/repositories/chatRepository";
-import {
-  ensureMessageOutboxAndLocal,
-  getFallbackBeforeId,
-  syncAllUnsynced,
-  syncMessagesBefore,
-} from "@/services/sync/syncController";
 import { useAuth } from "@/hooks/useAuth";
 import { executeSqlAsync } from "@/services/db";
-import { sendChatMessage } from "@/services/apiService";
+import { fetchChatHistory, sendChatMessage } from "@/services/apiService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function ChatScreen() {
@@ -134,36 +130,13 @@ const fetchHistory = async (beforeId?: number) => {
     // 2. SERVER SYNC (BACKGROUND ONLY)
     // =========================
     try {
-      const data = await syncMessagesBefore({
-        beforeId: beforeId ?? Number.MAX_SAFE_INTEGER,
-        userId: user?.id
-      });
 
-      const apiMessages = data?.messages ?? [];
+      const data = await fetchChatHistory({});
+      setMessages(data);
+      setMessageEmotion(await getLatestUserEmotionLabel(user?.id));
 
-      if (apiMessages.length > 0) {
-        await upsertServerMessages(apiMessages, user?.id);
-      }
-
-      const refreshed = await getAllMessages(user?.id);
-      setMessages(refreshed);
-
-      nextBeforeId.current =
-        data?.next_before_id ??
-        getFallbackBeforeId(user?.id) ??
-        undefined;
-
-      hasMoreRef.current = Boolean(nextBeforeId.current);
     } catch (err) {
       console.warn("[chat] server fetch failed, keeping current UI");
-    }
-
-    // =========================
-    // 4. EMOTION (ONLY ON INITIAL LOAD)
-    // =========================
-    if (!beforeId) {
-      const emotion = await getLatestUserEmotionLabel(user?.id);
-      setMessageEmotion(emotion ?? undefined);
     }
 
     clearRetry();

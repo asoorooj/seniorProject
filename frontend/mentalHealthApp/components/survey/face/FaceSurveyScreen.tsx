@@ -434,7 +434,7 @@ export default function FaceSurveyScreen() {
     // if (!preferencesLoaded) return;
     const useEffectAction = async function(){
       console.log(user?.preferences)
-      if (hasAnyEnabledModality((user?.preferences ?? {pref_eval_audio:false, pref_eval_image:false, pref_eval_text:false}))) {
+      if (!hasAnyEnabledModality((user?.preferences ?? {pref_eval_audio:false, pref_eval_image:false, pref_eval_text:false}))) {
         Alert.alert(
           'No evaluation steps enabled',
           'Turn on at least one evaluation preference from your profile to start a check-in.',

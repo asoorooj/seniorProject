@@ -13,7 +13,6 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { cancelEvaluation, endEvaluation } from '@/services/apiService';
-import { syncAllUnsynced } from '@/services/sync/syncController';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG           = '#1E1830';
@@ -29,7 +28,7 @@ const HERO_BTN     = '#3D2820';
 
 // ─── Label mappings ───────────────────────────────────────────────────────────
 const FUSION_PHRASE: Record<string, string> = {
-  Angry:    'Feeling Tense',
+  Anger:    'Feeling Tense',
   Fear:     'Feeling Anxious',
   Happy:    'Mostly Joyful',
   Sad:      'Feeling Low',
@@ -272,7 +271,6 @@ export default function ResultsScreen() {
         {!fusionModelData?.error && <TouchableOpacity
           style={styles.ctaButton}
           onPress={() => {
-            syncAllUnsynced();
             router.replace('/(tabs)/journal');
           }}
           activeOpacity={0.85}

@@ -3,6 +3,8 @@ import { User } from "../hooks/useAuth"
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearDatabase, executeSqlAsync } from "./db";
 import { getRecentMessages, upsertServerMessages } from "./repositories/chatRepository";
+import { Message } from "@/components/chat/Message";
+import { getEntriesForRange, RawEntry, trimToRecentWeeks, upsertServerEntries } from "./repositories/journalRepository";
 export type UserPreferences = {
   pref_eval_text: boolean;
   pref_eval_image: boolean;
@@ -12,6 +14,34 @@ export type UserConsent = {
   stor_cons_text: boolean;
   stor_cons_image: boolean;
   stor_cons_audio: boolean;
+};
+export type Evaluation = {
+  evaluation: {
+    id: number;
+    user_id: number;
+    timestamp: Date;
+    scores: string;
+    label:string;
+    suggestion:string;
+    audio:{
+      id:number;
+      evaluation_id:number;
+      scores:string;
+      label:string;
+    },
+    image:{
+      id:number;
+      evaluation_id:number;
+      scores:string;
+      label:string;
+    },
+    text:{
+      id:number;
+      evaluation_id:number;
+      scores:string;
+      label:string;
+    }
+  }
 };
 
 async function safeJson(res: Response) {
@@ -186,18 +216,18 @@ export const syncUser = async (user:User) => {
 
 export async function fetchChatHistory(params: {
   jwt?: string;
-  beforeId?: number; //change to time
+  beforeDate?: Date; //change to time
   cursor?: string | null;
   limit?: number;
 }) {
-  const { beforeId, cursor, limit, jwt } = params;
+  const { beforeDate, cursor, limit, jwt } = params;
 
   let url = `${API_BASE}/chat/history`;
 
   const query: string[] = [];
 
   if (cursor) query.push(`cursor=${encodeURIComponent(cursor)}`);
-  if (beforeId) query.push(`before_id=${beforeId}`);
+  // if (beforeId) query.push(`before_id=${beforeId}`);
   if (limit) query.push(`limit=${limit}`);
 
   if (query.length > 0) {
@@ -210,7 +240,7 @@ export async function fetchChatHistory(params: {
 
   console.log("[api] FINAL URL:", url); // 🔥 debug
 
-  let messages = [];
+  let messages:Message[] = [];
 
   const res = await fetch(url, { headers });
   const data = await res.json();
@@ -219,8 +249,7 @@ export async function fetchChatHistory(params: {
       messages = await getRecentMessages();
       
     } catch(error) {
-      throw { status: res.status }; //fetch locally  
-      return [];
+      return messages;
     }
   } else {
     await upsertServerMessages(data?.messages); //Remove messages out of cache range
@@ -258,27 +287,63 @@ export async function sendChatMessage(params: {
 
 // ================= JOURNAL =================
 
-export async function fetchEvaluationsByDate(params: {
+export async function fetchJournalsByDate(params: {
   userId?: number;
+  start: Date;
+  end: Date;
   jwt?: string;
-  startDate: string;
 }) {
-  const { userId, startDate, jwt } = params;
-  const token = await AsyncStorage.getItem("token");
+  const { userId, start, end, jwt } = params;
 
-  const res = await fetch(
-    `${API_BASE}/evaluation/by-date?user_id=${userId ? userId : await AsyncStorage.getItem("id")}&start_date=${startDate}`,
-    {
-      headers: {
-        "Authorization": `Bearer ${jwt ? jwt : token}`,
-        "Content-Type": "application/json"
-      }
+  const headers = {
+    Authorization: `Bearer ${jwt ?? await AsyncStorage.getItem("token")}`,
+    "Content-Type": "application/json",
+  };
+
+  const url = `${API_BASE}/evaluation/by-date?user_id=${
+    userId ?? await AsyncStorage.getItem("id")
+  }&start_date=${formatDate(start)}`;
+
+  let entries: RawEntry[] = [];
+
+  try {
+    const res = await fetch(url, { headers });
+
+    if (!res.ok) throw new Error("API failed");
+
+    const data = await res.json();
+
+    // ✅ save server data
+    await upsertServerEntries(data?.evaluations ?? [], userId);
+
+    // ✅ prune older than 8 weeks
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 7 * 8);
+
+    await trimToRecentWeeks(cutoff, Number(userId ?? await AsyncStorage.getItem("id")));
+
+    // ✅ read from DB using your function
+    entries = await getEntriesForRange({ start, end, userId });
+
+  } catch (err) {
+    console.log("[journal] API failed, fallback to DB");
+
+    try {
+      entries = await getEntriesForRange({ start, end, userId });
+    } catch {
+      return [];
     }
-  );
+  }
 
-  if (!res.ok) throw { status: res.status };
+  return entries;
+}
 
-  return res.json();
+function formatDate(date: Date) {
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const year = date.getFullYear();
+
+  return `${month}/${day}/${year}`;
 }
 
 export async function fetchEvaluationsByMonth(params: {

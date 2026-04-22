@@ -4,7 +4,6 @@ import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { SyncProvider } from '@/services/sync/SyncProvider';
 import { AuthProvider } from '@/hooks/useAuth';
 
 export const unstable_settings = {
@@ -17,7 +16,6 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <SyncProvider>
           <Stack>
             <Stack.Screen name="login" options={{ headerShown: false }} />
             <Stack.Screen name="chat" options={{ headerShown: false }} />
@@ -33,7 +31,6 @@ export default function RootLayout() {
             <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
           </Stack>
           <StatusBar style="auto" />
-        </SyncProvider>
       </ThemeProvider>
     </AuthProvider>
   );

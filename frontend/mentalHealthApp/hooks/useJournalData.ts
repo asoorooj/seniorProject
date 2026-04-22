@@ -6,9 +6,8 @@ import {
     getEntriesForRange,
     upsertServerEntries,
 } from '@/services/repositories/journalRepository';
-import { fetchEvaluationsByDate } from '@/services/apiService';
+import { fetchJournalsByDate } from '@/services/apiService';
 import { useAuth } from '@/hooks/useAuth';
-import { syncAllUnsynced } from '@/services/sync/syncController';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -266,52 +265,61 @@ export function useJournalData() {
         }));
     };
 
-    useEffect(() => {
-        let cancelled = false;
-        setWeekLoading(true);
+useEffect(() => {
+    if (!user?.id) return; // ✅ wait until user exists
 
-        const run = async (sync:boolean) => {
-            const weekKey = getWeekKey(weekStart);
-            const { start, end } = getWeekRange(weekStart);
+    let cancelled = false;
+    setWeekLoading(true);
 
-            let rawEntries: RawEntry[] = [];
+    const run = async () => {
+        const weekKey = getWeekKey(weekStart);
+        const { start, end } = getWeekRange(weekStart);
 
-            if (loadedWeeksRef.current[weekKey]) {
-                rawEntries = loadedWeeksRef.current[weekKey];
-            } else {
-                const local = await getEntriesForRange({ start, end });
+        let rawEntries: RawEntry[] = [];
 
-                if (local.length > 0) {
-                    rawEntries = local;
-                } else {
-                    const data = await fetchEvaluationsByDate({                        
-                        userId: user?.id, //See how to ensure userId is not null, either force an refetch of user data 
-                        startDate: weekStartDateString(weekStart),
-                    });
+        const isFirstLoad = !loadedWeeksRef.current[weekKey];
 
-                    rawEntries = mapEvaluationsToRawEntries(data);
-                    loadedWeeksRef.current[weekKey] = rawEntries;
-                }
-                if (rawEntries.length > 0) {
-                    loadedWeeksRef.current[weekKey] = rawEntries;
-                }
+        if (!isFirstLoad) {
+            rawEntries = loadedWeeksRef.current[weekKey];
+        } else {
+            // ✅ ALWAYS try API on first load or new week
+            const data = await fetchJournalsByDate({
+                userId: user.id,
+                start,
+                end
+            });
+
+            
+            rawEntries = data;
+            console.log("[JOURNAL DATA]",rawEntries)
+
+            // fallback to local if API returned nothing
+            if (rawEntries.length === 0) {
+                rawEntries = await getEntriesForRange({ start, end });
             }
 
-            if (cancelled) return;
+            if (rawEntries.length > 0) {
+                loadedWeeksRef.current[weekKey] = rawEntries;
+            }
+        }
 
-            const derived = buildWeekData(weekStart, rawEntries);
-            const { counts, prominentEmotion } = getEmotionStats(rawEntries);
+        if (cancelled) return;
 
-            setAllWeekEntries(rawEntries);
-            setWeekData(derived);
-            setWeekEmotionCounts(counts);
-            setWeekProminentEmotion(prominentEmotion);
-            setWeekLoading(false);
-        };
+        const derived = buildWeekData(weekStart, rawEntries);
+        const { counts, prominentEmotion } = getEmotionStats(rawEntries);
 
-        run(true);
-        return () => { cancelled = true; };
-    }, [weekStart]);
+        setAllWeekEntries(rawEntries);
+        setWeekData(derived);
+        setWeekEmotionCounts(counts);
+        setWeekProminentEmotion(prominentEmotion);
+        setWeekLoading(false);
+    };
+
+    run();
+
+    return () => { cancelled = true; };
+
+}, [weekStart, user?.id]);
 
     useEffect(() => {
         if (!weekData) return;

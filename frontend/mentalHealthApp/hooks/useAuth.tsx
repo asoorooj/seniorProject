@@ -1,6 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { clearDatabase } from "@/services/db";
-import { setSyncUnauthorizedHandler } from "@/services/sync/syncController";
 import { fetchUserProfile, getUser, syncUser } from "@/services/apiService";
 
 export type User = {
@@ -82,19 +81,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     };
 
-    setSyncUnauthorizedHandler(async () => {
-      await clearDatabase();
-      if (!mounted) return;
-      setUser(null);
-      setJwt(null);
-      setLoading(false);
-    });
-
     bootstrap();
-    return () => {
-      mounted = false;
-      setSyncUnauthorizedHandler(null);
-    };
   }, []);
 
   return (
