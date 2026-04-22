@@ -199,13 +199,10 @@ export async function resetLocalTables(database: SQLiteDatabase) {
   console.log("RESET TABLES");
 
   await database.execAsync(`
-      DROP TABLE IF EXISTS outbox;
-      DROP TABLE IF EXISTS sync_state;
-      DROP TABLE IF EXISTS text_evaluations;
-      DROP TABLE IF EXISTS image_evaluations;
-      DROP TABLE IF EXISTS audio_evaluations;
-      DROP TABLE IF EXISTS evaluations;
-      DROP TABLE IF EXISTS messages;
+    PRAGMA writable_schema = 1;
+    DELETE FROM sqlite_master WHERE type IN ('table', 'index', 'trigger');
+    PRAGMA writable_schema = 0;
+    VACUUM;
   `);
 }
 
@@ -217,7 +214,7 @@ export async function initDb() {
 
     console.log("[db] init start");
 
-    // await resetLocalTables(database);
+    await resetLocalTables(database);
     await createCoreSchema(database);
     await migrateLegacyTimestampStorage(database);
 
