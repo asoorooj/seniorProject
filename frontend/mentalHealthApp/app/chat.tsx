@@ -18,8 +18,7 @@ import { Message } from "../components/chat/Message";
 import ChatInput from "../components/chat/ChatInput";
 import {
   getLatestUserEmotionLabel,
-  getAllMessages,
-  upsertServerMessages,
+  getRecentMessages,
 } from "@/services/repositories/chatRepository";
 import {
   ensureMessageOutboxAndLocal,

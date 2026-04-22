@@ -2,6 +2,7 @@ import { API_BASE } from "../constants/api";
 import { User } from "../hooks/useAuth"
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearDatabase, executeSqlAsync } from "./db";
+import { getRecentMessages, upsertServerMessages } from "./repositories/chatRepository";
 export type UserPreferences = {
   pref_eval_text: boolean;
   pref_eval_image: boolean;
@@ -185,7 +186,7 @@ export const syncUser = async (user:User) => {
 
 export async function fetchChatHistory(params: {
   jwt?: string;
-  beforeId?: number;
+  beforeId?: number; //change to time
   cursor?: string | null;
   limit?: number;
 }) {
@@ -209,10 +210,24 @@ export async function fetchChatHistory(params: {
 
   console.log("[api] FINAL URL:", url); // 🔥 debug
 
-  const res = await fetch(url, { headers });
-  if (!res.ok) throw { status: res.status };
+  let messages = [];
 
-  return res.json();
+  const res = await fetch(url, { headers });
+  const data = await res.json();
+  if (!res.ok){
+    try{
+      messages = await getRecentMessages();
+      
+    } catch(error) {
+      throw { status: res.status }; //fetch locally  
+      return [];
+    }
+  } else {
+    await upsertServerMessages(data?.messages); //Remove messages out of cache range
+    messages = await getRecentMessages();
+  }
+
+  return messages;
 }
 
 
