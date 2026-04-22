@@ -239,10 +239,58 @@ export async function trimToRecentWeeks(
 
 export async function getTotalEvals(user_id?:number){
   const result = await executeSqlAsync(`
-    
+
     SELECT COUNT(*) FROM evaluations WHERE user_id = ?
-    
+
     `, [user_id ?? await AsyncStorage.getItem("id")]);
 
     return result?.rows?.item(0)?.total ?? result?.rows?.item(0);
+}
+
+export async function getLatestEntry(userId?: number): Promise<RawEntry | null> {
+  await initDb();
+  const result = await executeSqlAsync(
+    `SELECT
+        e.id,
+        e.timestamp,
+        e.label,
+        e.scores,
+        e.suggestion,
+        i.label AS image_label,
+        i.scores AS image_scores,
+        a.label AS audio_label,
+        a.scores AS audio_scores,
+        t.label AS text_label,
+        t.scores AS text_scores
+     FROM evaluations e
+     LEFT JOIN image_evaluations i ON i.evaluation_id = e.id
+     LEFT JOIN audio_evaluations a ON a.evaluation_id = e.id
+     LEFT JOIN text_evaluations t ON t.evaluation_id = e.id
+     WHERE e.user_id = ?
+     ORDER BY datetime(e.timestamp) DESC
+     LIMIT 1;`,
+    [userId ?? await AsyncStorage.getItem('id')]
+  );
+
+  const rows = result.rows as any;
+  if (rows.length === 0) return null;
+
+  const row = rows.item(0);
+  const evaluationScores = safeJsonParse<Record<string, number>>(row.scores);
+  const faceScores = safeJsonParse<Record<string, number>>(row.image_scores);
+  const voiceScores = safeJsonParse<Record<string, number>>(row.audio_scores);
+  const textScores = safeJsonParse<Record<string, number>>(row.text_scores);
+
+  return {
+    id: String(row.id),
+    timestamp: row.timestamp,
+    mood: row.label ?? 'unknown',
+    score: maxScore(evaluationScores),
+    face: { score: maxScore(faceScores), label: row.image_label ?? 'unknown' },
+    voice: { score: maxScore(voiceScores), label: row.audio_label ?? 'unknown' },
+    text: { score: maxScore(textScores), label: row.text_label ?? 'unknown' },
+    journal_text: null,
+    suggestion: row.suggestion ?? null,
+    tip: null,
+  };
 }
