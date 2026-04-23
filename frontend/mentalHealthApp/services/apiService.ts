@@ -347,24 +347,35 @@ function formatDate(date: Date) {
 export async function fetchEvaluationsByMonth(params: {
   userId?: number;
   jwt: string;
-  startDate: string;
+  month: number; // 0-11
 }) {
-  const { userId, startDate, jwt } = params;
-  // const token = await AsyncStorage.getItem("token");
+  const { userId, month, jwt } = params;
+
+  const storedId = await AsyncStorage.getItem("id");
+
+  const finalUserId = userId ?? (storedId ? Number(storedId) : null);
+  if (!finalUserId) throw new Error("Missing userId");
 
   const res = await fetch(
-    `${API_BASE}/evaluation/by-month?user_id=${userId ? userId : await AsyncStorage.getItem("id")}&start_date=${startDate}`,
-    {
-      headers: {
-        "Authorization": `Bearer ${jwt}`,
-        "Content-Type": "application/json"
+      `${API_BASE}/evaluation/by-month?user_id=${finalUserId}&month=${month}`,
+      {
+        headers: {
+          Authorization: `Bearer ${jwt}`,
+          "Content-Type": "application/json",
+        },
       }
-    }
   );
 
-  if (!res.ok) throw { status: res.status };
+  const data = await safeJson(res);
 
-  return res.json();
+  if (!res.ok) {
+    throw {
+      status: res.status,
+      data,
+    };
+  }
+
+  return data;
 }
 
 // ================= PROFILE =================
@@ -544,22 +555,29 @@ export async function analyzeAudioClip(uri: string, evaluationId: number) {
     name: 'recording.m4a',
   } as any);
 
-  console.log(evaluationId)
+  console.log("Uploading URI:", uri);
+  console.log("Evaluation ID:", evaluationId);
 
   // 2. Append additional data
 
   const token = await AsyncStorage.getItem('token');
-  
+
   const res = await fetch(`${API_BASE}/startevaluation_audio`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
     },
     body: formData,
   });
 
-  if (!res.ok) throw { status: res.status };
+  if (!res.ok) {
+    const text = await res.text();
+
+    console.error("❌ BACKEND ERROR STATUS:", res.status);
+    console.error("❌ BACKEND ERROR BODY:", text);
+
+    throw new Error(text); // 👈 keep real message
+  }
 
   const data = await res.json();
 

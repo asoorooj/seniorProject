@@ -28,6 +28,29 @@ export function LogEntry({ entry }: { entry: LogEntryData }) {
 
     const maxHeight = anim.interpolate({ inputRange: [0, 1], outputRange: [0, 400] });
 
+    function parseBackendDate(dateStr: string) {
+        if (!dateStr) return '';
+
+        try {
+            const cleaned = dateStr
+                .replace(' ', 'T')
+                .split('.')[0] + 'Z';
+
+            const d = new Date(cleaned);
+
+            if (isNaN(d.getTime())) return 'Invalid date';
+
+            return d.toLocaleString([], {
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+            });
+        } catch {
+            return 'Invalid date';
+        }
+    }
+
     return (
         <View style={styles.entryWrapper}>
             <View style={[styles.timelineDot, { backgroundColor: entry.dotColor }]} />

@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { colors } from '@/assets/styles/colors';
 import { LogEntryData } from '@/components/journal/LogEntry';
+import { fetchJournalsByDate, fetchEvaluationsByMonth } from '@/services/apiService';
 import {
     RawEntry,
     getEntriesForRange,
     upsertServerEntries,
 } from '@/services/repositories/journalRepository';
-import { fetchJournalsByDate } from '@/services/apiService';
 import { useAuth } from '@/hooks/useAuth';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -146,7 +146,9 @@ function capitalize(s: string) {
 }
 
 function formatTimestamp(iso: string): string {
-    return new Date(iso).toLocaleString('en-US', {
+    const fixed = iso.replace(' ', 'T').split('.')[0] + 'Z';
+
+    return new Date(fixed).toLocaleString('en-US', {
         month: 'short',
         day: '2-digit',
         hour: 'numeric',
@@ -221,6 +223,41 @@ export function useJournalData() {
 
     const [weekLoading, setWeekLoading] = useState(true);
     const [dayLoading, setDayLoading] = useState(false);
+
+
+    const [monthEntries, setMonthEntries] = useState<RawEntry[]>([]);
+    const [monthLoading, setMonthLoading] = useState(false);
+
+    // Add function to fetch month data
+    const fetchMonthData = useCallback(async (month: Date) => {
+        if (!user?.id || !jwt) return;
+
+        setMonthLoading(true);
+
+        try {
+            const monthNum = month.getMonth(); // 0–11 (THIS is correct for backend)
+
+            console.log('[journal] Fetching month data:', {
+                userId: user.id,
+                month: monthNum,
+            });
+
+            const response = await fetchEvaluationsByMonth({
+                userId: user.id,
+                jwt,
+                month: monthNum,
+            });
+
+            const rawEntries = mapEvaluationsToRawEntries(response);
+            setMonthEntries(rawEntries);
+
+        } catch (error) {
+            console.error('[journal] Failed to fetch month data:', error);
+            setMonthEntries([]);
+        } finally {
+            setMonthLoading(false);
+        }
+    }, [user?.id, jwt]);
 
     const loadedWeeksRef = useRef<Record<string, RawEntry[]>>({});
 
@@ -353,6 +390,9 @@ useEffect(() => {
         weekEmotionCounts,
         weekProminentEmotion,
         allWeekEntries,
+        monthEntries,
+        monthLoading,
+        fetchMonthData,
         selectDay,
         selectWeek,
     };

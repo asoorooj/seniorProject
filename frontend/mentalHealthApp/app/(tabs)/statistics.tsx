@@ -1,5 +1,5 @@
 // app/(tabs)/statistics.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity,
     StyleSheet, ActivityIndicator,
@@ -12,15 +12,12 @@ import { WeekPicker } from '@/components/journal/WeekPicker';
 import { MonthPicker } from '@/components/journal/MonthPicker';
 import { EmotionCalendar } from '@/components/journal/EmotionCalendar';
 import { useJournalData } from '@/hooks/useJournalData';
-import { useAuth } from '@/hooks/useAuth';
 
 export default function StatisticsScreen() {
     const [weekPickerVisible, setWeekPickerVisible] = useState(false);
     const [monthPickerVisible, setMonthPickerVisible] = useState(false);
     const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
     const [selectedMonth, setSelectedMonth] = useState(new Date());
-
-    const { user, setUser } = useAuth();
 
     const {
         weekStart,
@@ -29,8 +26,18 @@ export default function StatisticsScreen() {
         weekEmotionCounts,
         weekProminentEmotion,
         selectWeek,
-        allWeekEntries
+        allWeekEntries,
+        monthEntries,
+        monthLoading,
+        fetchMonthData,
     } = useJournalData();
+
+    // Fetch month data when month changes
+    useEffect(() => {
+        if (viewMode === 'month') {
+            fetchMonthData(selectedMonth);
+        }
+    }, [selectedMonth, viewMode, fetchMonthData]);
 
     const weekRangeLabel = weekData
         ? `${weekData.days[0].displayDate}  —  ${weekData.days[6].displayDate}`
@@ -41,9 +48,9 @@ export default function StatisticsScreen() {
         year: 'numeric'
     }).toUpperCase();
 
+    // Helper functions
     const mapMoodToCalendar = (mood: string) => {
         const m = mood.toLowerCase();
-
         if (m.includes('happy')) return 'Happy';
         if (m.includes('sad')) return 'Sad';
         if (m.includes('fear')) return 'Fear';
@@ -52,29 +59,136 @@ export default function StatisticsScreen() {
         return 'Neutral';
     };
 
-    const buildMonthEmotions = (
-        entries: any[],
-        month: number,
-        year: number
-    ) => {
+    const buildMonthEmotions = (entries: any[], month: number, year: number) => {
         const result: Record<number, string> = {};
 
         for (const entry of entries) {
             const date = new Date(entry.timestamp);
-
-            if (
-                date.getMonth() !== month ||
-                date.getFullYear() !== year
-            ) continue;
+            if (date.getMonth() !== month || date.getFullYear() !== year) continue;
 
             const day = date.getDate();
-
-            // If multiple entries in a day → last one wins (simple version)
             result[day] = mapMoodToCalendar(entry.mood ?? 'neutral');
         }
 
         return result;
     };
+
+    // Statistics calculations
+    const getStreak = (entries: any[]) => {
+        if (!entries.length) return 0;
+
+        const days = new Set(
+            entries.map(e => new Date(e.timestamp).toLocaleDateString('en-CA'))
+        );
+
+        let streak = 0;
+        let current = new Date();
+
+        while (true) {
+            const d = current.toLocaleDateString('en-CA');
+            if (days.has(d)) {
+                streak++;
+                current.setDate(current.getDate() - 1);
+            } else break;
+        }
+
+        return streak;
+    };
+
+    const getMostActiveHour = (entries: any[]) => {
+        if (!entries.length) return '--';
+
+        const counts: Record<number, number> = {};
+
+        entries.forEach(e => {
+            const d = new Date(e.timestamp);
+            const h = d.getHours();
+            counts[h] = (counts[h] || 0) + 1;
+        });
+
+        const bestHour = Number(
+            Object.keys(counts).reduce((a, b) =>
+                counts[Number(a)] > counts[Number(b)] ? a : b
+            )
+        );
+
+        const suffix = bestHour >= 12 ? 'PM' : 'AM';
+        const display = ((bestHour + 11) % 12 + 1);
+
+        return `${display}:00 ${suffix}`;
+    };
+
+    const getAverageScore = (entries: any[]) => {
+        if (!entries.length) return 0;
+        const sum = entries.reduce((acc, e) => acc + (e.score || 0), 0);
+        return Math.round(sum / entries.length);
+    };
+
+    const getTrendDirection = (entries: any[]) => {
+        if (entries.length < 2) return 'stable';
+
+        const sorted = [...entries].sort((a, b) =>
+            a.timestamp.localeCompare(b.timestamp)
+        );
+
+        const firstHalf = sorted.slice(0, Math.floor(sorted.length / 2));
+        const secondHalf = sorted.slice(Math.floor(sorted.length / 2));
+
+        const avgFirst = getAverageScore(firstHalf);
+        const avgSecond = getAverageScore(secondHalf);
+
+        const diff = avgSecond - avgFirst;
+
+        if (diff > 5) return 'improving';
+        if (diff < -5) return 'declining';
+        return 'stable';
+    };
+
+    const getMostCommonEmotion = (entries: any[]) => {
+        if (!entries.length) return 'None';
+
+        const counts: Record<string, number> = {};
+
+        entries.forEach(e => {
+            const emotion = mapMoodToCalendar(e.mood ?? 'neutral');
+            counts[emotion] = (counts[emotion] || 0) + 1;
+        });
+
+        return Object.keys(counts).reduce((a, b) =>
+            counts[a] > counts[b] ? a : b
+        );
+    };
+
+    const getModelAccuracy = (entries: any[]) => {
+        if (!entries.length) return { face: 0, voice: 0, text: 0 };
+
+        const sum = { face: 0, voice: 0, text: 0 };
+
+        entries.forEach(e => {
+            sum.face += e.face?.score || 0;
+            sum.voice += e.voice?.score || 0;
+            sum.text += e.text?.score || 0;
+        });
+
+        return {
+            face: Math.round(sum.face / entries.length),
+            voice: Math.round(sum.voice / entries.length),
+            text: Math.round(sum.text / entries.length),
+        };
+    };
+
+    const currentEntries = viewMode === 'week' ? allWeekEntries : monthEntries;
+    const isLoading = viewMode === 'week' ? weekLoading : monthLoading;
+
+    const streak = getStreak(currentEntries);
+    const mostActiveHour = getMostActiveHour(currentEntries);
+    const avgScore = getAverageScore(currentEntries);
+    const trend = getTrendDirection(currentEntries);
+    const mostCommon = getMostCommonEmotion(currentEntries);
+    const modelAccuracy = getModelAccuracy(currentEntries);
+
+    const trendEmoji = trend === 'improving' ? '📈' : trend === 'declining' ? '📉' : '➡️';
+    const trendText = trend === 'improving' ? 'improving' : trend === 'declining' ? 'declining' : 'stable';
 
     return (
         <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -85,34 +199,22 @@ export default function StatisticsScreen() {
                     <Text style={styles.headerTitle}>Statistics</Text>
                 </View>
 
-                {/* ── View Toggle (Week/Month) ────────────────────────── */}
+                {/* ── View Toggle ──────────────────────────────────────── */}
                 <View style={styles.toggleContainer}>
                     <TouchableOpacity
-                        style={[
-                            styles.toggleButton,
-                            viewMode === 'week' && styles.toggleButtonActive
-                        ]}
+                        style={[styles.toggleButton, viewMode === 'week' && styles.toggleButtonActive]}
                         onPress={() => setViewMode('week')}
                     >
-                        <Text style={[
-                            styles.toggleText,
-                            viewMode === 'week' && styles.toggleTextActive
-                        ]}>
+                        <Text style={[styles.toggleText, viewMode === 'week' && styles.toggleTextActive]}>
                             Week
                         </Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                        style={[
-                            styles.toggleButton,
-                            viewMode === 'month' && styles.toggleButtonActive
-                        ]}
+                        style={[styles.toggleButton, viewMode === 'month' && styles.toggleButtonActive]}
                         onPress={() => setViewMode('month')}
                     >
-                        <Text style={[
-                            styles.toggleText,
-                            viewMode === 'month' && styles.toggleTextActive
-                        ]}>
+                        <Text style={[styles.toggleText, viewMode === 'month' && styles.toggleTextActive]}>
                             Month
                         </Text>
                     </TouchableOpacity>
@@ -135,8 +237,24 @@ export default function StatisticsScreen() {
                             <Text style={styles.selectorArrow}>▼</Text>
                         </TouchableOpacity>
 
-                        {/* Emotion Radar Chart */}
-                        {!weekLoading && (
+                        {/* Weekly Overview Card */}
+                        <View style={styles.overviewCard}>
+                            <View style={styles.overviewRow}>
+                                <View style={styles.overviewDivider} />
+                                <View style={styles.overviewStat}>
+                                    <Text style={styles.overviewValue}>{currentEntries.length}</Text>
+                                    <Text style={styles.overviewLabel}>ENTRIES</Text>
+                                </View>
+                                <View style={styles.overviewDivider} />
+                                <View style={styles.overviewStat}>
+                                    <Text style={styles.overviewValue}>{streak}</Text>
+                                    <Text style={styles.overviewLabel}>STREAK</Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        {/* Emotion Radar */}
+                        {!isLoading && (
                             <View style={styles.section}>
                                 <Text style={sectionLabel}>Emotion Distribution</Text>
                                 <View style={styles.radarWrapper}>
@@ -148,17 +266,17 @@ export default function StatisticsScreen() {
                             </View>
                         )}
 
-                        {/* Model Confidence Metrics */}
+                        {/* Model Confidence */}
                         <View style={styles.section}>
-                            <Text style={sectionLabel}>Average Confidence</Text>
-                            {weekLoading ? (
+                            <Text style={sectionLabel}>Model Confidence</Text>
+                            {isLoading ? (
                                 <View style={styles.metricsSkeleton} />
                             ) : (
                                 <View style={styles.metricsRow}>
                                     {[
-                                        { value: weekData?.metrics.face, color: colors.barFace, icon: '📷' },
-                                        { value: weekData?.metrics.voice, color: colors.barVoice, icon: '🎙' },
-                                        { value: weekData?.metrics.text, color: colors.barText, icon: '📝' },
+                                        { value: weekData?.metrics.face, color: colors.barFace, icon: '📷', label: 'Face' },
+                                        { value: weekData?.metrics.voice, color: colors.barVoice, icon: '🎙', label: 'Voice' },
+                                        { value: weekData?.metrics.text, color: colors.barText, icon: '📝', label: 'Text' },
                                     ].map((metric, i) => (
                                         <React.Fragment key={i}>
                                             <View style={styles.metricBox}>
@@ -166,6 +284,7 @@ export default function StatisticsScreen() {
                                                     {metric.value}%
                                                 </Text>
                                                 <Text style={styles.metricIcon}>{metric.icon}</Text>
+                                                <Text style={styles.metricLabel}>{metric.label}</Text>
                                             </View>
                                             {i < 2 && <View style={styles.metricDivider} />}
                                         </React.Fragment>
@@ -174,15 +293,41 @@ export default function StatisticsScreen() {
                             )}
                         </View>
 
-                        {/* Additional Week Stats */}
-                        <View style={styles.statsGrid}>
-                            <View style={styles.statCard}>
-                                <Text style={styles.statValue}>{user?.streak ?? 0}</Text>
-                                <Text style={styles.statLabel}>DAY STREAK</Text>
+                        {/* Insights */}
+                        <View style={styles.section}>
+                            <Text style={sectionLabel}>Insights</Text>
+
+                            {/* Trend */}
+                            <View style={styles.insightCard}>
+                                <Text style={styles.insightEmoji}>{trendEmoji}</Text>
+                                <View style={styles.insightText}>
+                                    <Text style={styles.insightTitle}>Mood Trend</Text>
+                                    <Text style={styles.insightDescription}>
+                                        Your mood has been <Text style={styles.highlight}>{trendText}</Text> this week
+                                    </Text>
+                                </View>
                             </View>
-                            <View style={styles.statCard}>
-                                <Text style={styles.statValue}>{user?.journalCount ?? 0}</Text>
-                                <Text style={styles.statLabel}>ENTRIES</Text>
+
+                            {/* Most Common Emotion */}
+                            <View style={styles.insightCard}>
+                                <Text style={styles.insightEmoji}>😊</Text>
+                                <View style={styles.insightText}>
+                                    <Text style={styles.insightTitle}>Most Common</Text>
+                                    <Text style={styles.insightDescription}>
+                                        You felt <Text style={styles.highlight}>{mostCommon}</Text> most often
+                                    </Text>
+                                </View>
+                            </View>
+
+                            {/* Peak Activity */}
+                            <View style={styles.insightCard}>
+                                <Text style={styles.insightEmoji}>⏰</Text>
+                                <View style={styles.insightText}>
+                                    <Text style={styles.insightTitle}>Peak Activity</Text>
+                                    <Text style={styles.insightDescription}>
+                                        You're most active around <Text style={styles.highlight}>{mostActiveHour}</Text>
+                                    </Text>
+                                </View>
                             </View>
                         </View>
                     </>
@@ -205,27 +350,62 @@ export default function StatisticsScreen() {
                             <Text style={styles.selectorArrow}>▼</Text>
                         </TouchableOpacity>
 
+                        {/* Monthly Overview */}
+                        <View style={styles.overviewCard}>
+                            <View style={styles.overviewRow}>
+                                <View style={styles.overviewDivider} />
+                                <View style={styles.overviewStat}>
+                                    <Text style={styles.overviewValue}>{monthEntries.length}</Text>
+                                    <Text style={styles.overviewLabel}>ENTRIES</Text>
+                                </View>
+                                <View style={styles.overviewDivider} />
+                                <View style={styles.overviewStat}>
+                                    <Text style={styles.overviewValue}>{mostCommon}</Text>
+                                    <Text style={styles.overviewLabel}>MOST COMMON</Text>
+                                </View>
+                            </View>
+                        </View>
+
                         {/* Emotion Calendar */}
                         <View style={styles.section}>
                             <Text style={sectionLabel}>Daily Emotions</Text>
-                            <EmotionCalendar
-                                month={selectedMonth.getMonth()}
-                                year={selectedMonth.getFullYear()}
-                                dayEmotions={buildMonthEmotions(
-                                    allWeekEntries,
-                                    selectedMonth.getMonth(),
-                                    selectedMonth.getFullYear()
-                                )}
-                            />
+                            {monthLoading ? (
+                                <ActivityIndicator color={colors.accent} style={{ marginTop: 20 }} />
+                            ) : (
+                                <EmotionCalendar
+                                    month={selectedMonth.getMonth()}
+                                    year={selectedMonth.getFullYear()}
+                                    dayEmotions={buildMonthEmotions(
+                                        monthEntries,
+                                        selectedMonth.getMonth(),
+                                        selectedMonth.getFullYear()
+                                    )}
+                                />
+                            )}
                         </View>
 
-                        {/* Monthly Overview Placeholder */}
+                        {/* Monthly Model Performance */}
                         <View style={styles.section}>
-                            <Text style={sectionLabel}>Monthly Overview</Text>
-                            <View style={styles.placeholderCard}>
-                                <Text style={styles.placeholderText}>
-                                    Monthly statistics coming soon...
-                                </Text>
+                            <Text style={sectionLabel}>Model Performance</Text>
+                            <View style={styles.performanceGrid}>
+                                <View style={styles.performanceCard}>
+                                    <Text style={[styles.performanceValue, { color: colors.barFace }]}>
+                                        {modelAccuracy.face}%
+                                    </Text>
+                                    <Text style={styles.performanceLabel}>Face</Text>
+                                </View>
+                                <View style={styles.performanceCard}>
+                                    <Text style={[styles.performanceValue, { color: colors.barVoice }]}>
+                                        {modelAccuracy.voice}%
+                                    </Text>
+                                    <Text style={styles.performanceLabel}>Voice</Text>
+                                </View>
+                                <View style={styles.performanceCard}>
+                                    <Text style={[styles.performanceValue, { color: colors.barText }]}>
+                                        {modelAccuracy.text}%
+                                    </Text>
+                                    <Text style={styles.performanceLabel}>Text</Text>
+                                </View>
                             </View>
                         </View>
                     </>
@@ -257,15 +437,9 @@ export default function StatisticsScreen() {
 // ═══════════════════════════════════════════════════════════
 
 const styles = StyleSheet.create({
-    safeArea: {
-        flex: 1,
-        backgroundColor: colors.background
-    },
-    scroll: {
-        flex: 1
-    },
+    safeArea: { flex: 1, backgroundColor: colors.background },
+    scroll: { flex: 1 },
 
-    // Header
     header: {
         marginHorizontal: spacing.marginHorizontal,
         paddingTop: 16,
@@ -278,7 +452,6 @@ const styles = StyleSheet.create({
         letterSpacing: -0.5,
     },
 
-    // Toggle
     toggleContainer: {
         flexDirection: 'row',
         marginHorizontal: spacing.marginHorizontal,
@@ -306,48 +479,57 @@ const styles = StyleSheet.create({
         color: colors.surface,
     },
 
-    // Selector arrow
     selectorArrow: {
         fontSize: 10,
         color: colors.primary,
     },
 
-    // Well-being card
-    wellbeingCard: {
+    // Overview Card
+    overviewCard: {
         marginHorizontal: spacing.marginHorizontal,
         marginTop: 16,
-        padding: 28,
         backgroundColor: colors.surface,
         borderRadius: 20,
-        alignItems: 'center',
+        padding: 20,
         shadowColor: '#000',
         shadowOpacity: 0.05,
         shadowRadius: 10,
         shadowOffset: { width: 0, height: 2 },
         elevation: 2,
     },
-    wellbeingScore: {
-        fontSize: 64,
+    overviewRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    overviewStat: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    overviewValue: {
+        fontSize: 28,
         fontWeight: '900',
         color: colors.textPrimary,
-        letterSpacing: -2,
+        letterSpacing: -1,
     },
-    wellbeingLabel: {
-        fontSize: 11,
+    overviewLabel: {
+        fontSize: 10,
         color: colors.textSecondary,
         fontWeight: '600',
         marginTop: 4,
         letterSpacing: 0.5,
     },
+    overviewDivider: {
+        width: 2,
+        height: 40,
+        backgroundColor: colors.background,
+    },
 
-    // Section container
     section: {
         marginHorizontal: spacing.marginHorizontal,
         marginTop: 24,
         gap: 12,
     },
 
-    // Radar wrapper (contains the chart)
     radarWrapper: {
         backgroundColor: colors.surface,
         borderRadius: 20,
@@ -359,7 +541,6 @@ const styles = StyleSheet.create({
         elevation: 2,
     },
 
-    // Metrics
     metricsRow: {
         flexDirection: 'row',
         backgroundColor: colors.surface,
@@ -375,19 +556,25 @@ const styles = StyleSheet.create({
         flex: 1,
         paddingVertical: 20,
         alignItems: 'center',
-        gap: 8,
-    },
-    metricDivider: {
-        width: 3,
-        backgroundColor: colors.background,
+        gap: 4,
     },
     metricValue: {
-        fontSize: 28,
+        fontSize: 24,
         fontWeight: '800',
         letterSpacing: -0.5,
     },
     metricIcon: {
-        fontSize: 18,
+        fontSize: 16,
+    },
+    metricLabel: {
+        fontSize: 10,
+        color: colors.textSecondary,
+        fontWeight: '600',
+        marginTop: 4,
+    },
+    metricDivider: {
+        width: 3,
+        backgroundColor: colors.background,
     },
     metricsSkeleton: {
         height: 80,
@@ -395,18 +582,54 @@ const styles = StyleSheet.create({
         borderRadius: 20,
     },
 
-    // Stats grid
-    statsGrid: {
+    // Insights
+    insightCard: {
         flexDirection: 'row',
-        marginHorizontal: spacing.marginHorizontal,
-        marginTop: 24,
-        gap: 12,
-    },
-    statCard: {
-        flex: 1,
-        padding: 20,
         backgroundColor: colors.surface,
         borderRadius: 16,
+        padding: 16,
+        marginBottom: 12,
+        alignItems: 'center',
+        gap: 16,
+        shadowColor: '#000',
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 2,
+    },
+    insightEmoji: {
+        fontSize: 32,
+    },
+    insightText: {
+        flex: 1,
+    },
+    insightTitle: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: colors.textSecondary,
+        letterSpacing: 0.5,
+        marginBottom: 4,
+    },
+    insightDescription: {
+        fontSize: 14,
+        color: colors.textPrimary,
+        lineHeight: 20,
+    },
+    highlight: {
+        fontWeight: '700',
+        color: colors.primary,
+    },
+
+    // Performance Grid
+    performanceGrid: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    performanceCard: {
+        flex: 1,
+        backgroundColor: colors.surface,
+        borderRadius: 16,
+        padding: 20,
         alignItems: 'center',
         shadowColor: '#000',
         shadowOpacity: 0.05,
@@ -414,30 +637,15 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 2 },
         elevation: 2,
     },
-    statValue: {
-        fontSize: 32,
-        fontWeight: '900',
-        color: colors.textPrimary,
-        letterSpacing: -1,
+    performanceValue: {
+        fontSize: 24,
+        fontWeight: '800',
+        letterSpacing: -0.5,
     },
-    statLabel: {
+    performanceLabel: {
         fontSize: 10,
         color: colors.textSecondary,
         fontWeight: '600',
         marginTop: 4,
-        letterSpacing: 0.5,
-    },
-
-    // Placeholder
-    placeholderCard: {
-        padding: 40,
-        backgroundColor: colors.surface,
-        borderRadius: 20,
-        alignItems: 'center',
-    },
-    placeholderText: {
-        fontSize: 14,
-        color: colors.textSecondary,
-        fontStyle: 'italic',
     },
 });

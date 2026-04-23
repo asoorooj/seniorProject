@@ -327,9 +327,13 @@ function LoadingScreen({
     }).start();
 
     if (evaluationId === null) return;
-    analyzeAudioClip(uri, evaluationId).then(result => {
-      setTimeout(() => onComplete(result), 2800);
-    });
+    analyzeAudioClip(uri, evaluationId)
+        .then(result => {
+          setTimeout(() => onComplete(result), 2800);
+        })
+        .catch(err => {
+          console.error("Audio analysis failed:", err);
+        });
   }, []);
 
   const barWidth = progress.interpolate({
