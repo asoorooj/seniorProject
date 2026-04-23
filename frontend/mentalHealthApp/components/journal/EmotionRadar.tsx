@@ -6,14 +6,25 @@ import { colors } from '@/assets/styles/colors';
 import { spacing } from "@/assets/styles/colors";
 import { sectionLabel } from "@/assets/styles/text";
 
-const EMOTION_TO_MOOD: Record<string, { icon: keyof typeof MaterialIcons.glyphMap; color: string }> = {
-    Anger: { icon: 'sentiment-very-dissatisfied', color: '#E05C5C' },
-    Sad: { icon: 'sentiment-dissatisfied', color: '#7B8FD4' },
-    Fear: { icon: 'sentiment-dissatisfied', color: '#B07FD4' },
-    Neutral: { icon: 'sentiment-neutral', color: '#8B87A8' },
-    Disgust: { icon: 'sentiment-very-dissatisfied', color: '#A07B5A' },
-    Happy: { icon: 'sentiment-satisfied', color: '#2D9C8A' },
+const EMOTION_TO_MOOD: Record<string, { icon: keyof typeof MaterialIcons.glyphMap; color: string, name: string }> = {
+    Anger: { icon: 'sentiment-very-dissatisfied', color: '#F27059', name: "Tense" },
+    Sad: { icon: 'sentiment-dissatisfied', color: '#6B9FD4', name: "Low" },
+    Fear: { icon: 'sentiment-dissatisfied', color: '#F0A050', name: "Anxious" },
+    Neutral: { icon: 'sentiment-neutral', color: '#9B8FE8', name: "Calm" },
+    Disgust: { icon: 'sentiment-very-dissatisfied', color: '#F0A050', name: "Disgust" },
+    Happy: { icon: 'sentiment-satisfied', color: '#4DAF82', name: "Joyful"},
 };
+
+const MOOD_MAP: [string, string, string][] = [
+    ['Anger',   '#F27059', 'Tense'],
+    ['Angry',   '#F27059', 'Tense'],
+    ['Fear',    '#F0A050', 'Anxious'],
+    ['Happy',   '#4DAF82', 'Joyful'],
+    ['Sad',     '#6B9FD4', 'Low'],
+    ['Surprise','#E07FC0', 'Surprised'],
+    ['Neutral', '#9B8FE8', 'Calm'],
+    ['Disgust', '#9B8FE8', 'Calm'],
+];
 
 interface EmotionRadarProps {
     emotionCounts: {
@@ -52,7 +63,6 @@ export function EmotionRadar({ emotionCounts, prominentEmotion }: EmotionRadarPr
     const values = LABELS.map(l => {
         const raw = (emotionCounts[l] || 0) / maxValue;
 
-        // 👇 even zero values get a slight radius
         return Math.max(raw, MIN_VISUAL);
     });
 
@@ -71,16 +81,16 @@ export function EmotionRadar({ emotionCounts, prominentEmotion }: EmotionRadarPr
                     <>
                         <MaterialIcons
                             name={EMOTION_TO_MOOD[prominentEmotion].icon}
-                            size={110}
+                            size={100}
                             color={EMOTION_TO_MOOD[prominentEmotion].color}
                         />
                         <Text
                             style={[
                                 styles.scoreLabel,
-                                { color: EMOTION_TO_MOOD[prominentEmotion].color }
+                                { color: EMOTION_TO_MOOD[prominentEmotion].color}
                             ]}
                         >
-                            {prominentEmotion.toUpperCase()}
+                            {EMOTION_TO_MOOD[prominentEmotion].name}
                         </Text>
                     </>
                 )}
@@ -172,7 +182,7 @@ const styles = StyleSheet.create({
         width: 90,
         alignItems: 'flex-start',
         justifyContent: 'flex-end', // 👈 pushes icon + label to bottom
-        gap: 6,
+        gap: 30,
     },
     radarChartSide: {
         flex: 1,
