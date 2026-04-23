@@ -109,7 +109,7 @@ export const getUser = async (): Promise<User | null> => {
   };
 };
 
-export const registerUser = async (email: string, password: string):Promise<{message:string, user:User, access_token:string, user_id:number}> => {
+export const registerUser = async (email: string, password: string):Promise<{message:string, user:User, access_token:string, user_id:number, error?: string}> => {
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: "POST",
     headers: {

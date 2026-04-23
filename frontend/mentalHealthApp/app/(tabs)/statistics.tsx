@@ -12,12 +12,15 @@ import { WeekPicker } from '@/components/journal/WeekPicker';
 import { MonthPicker } from '@/components/journal/MonthPicker';
 import { EmotionCalendar } from '@/components/journal/EmotionCalendar';
 import { useJournalData } from '@/hooks/useJournalData';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function StatisticsScreen() {
     const [weekPickerVisible, setWeekPickerVisible] = useState(false);
     const [monthPickerVisible, setMonthPickerVisible] = useState(false);
     const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
     const [selectedMonth, setSelectedMonth] = useState(new Date());
+
+    const { user, setUser } = useAuth();
 
     const {
         weekStart,
@@ -174,11 +177,11 @@ export default function StatisticsScreen() {
                         {/* Additional Week Stats */}
                         <View style={styles.statsGrid}>
                             <View style={styles.statCard}>
-                                <Text style={styles.statValue}>7</Text>
+                                <Text style={styles.statValue}>{user?.streak ?? 0}</Text>
                                 <Text style={styles.statLabel}>DAY STREAK</Text>
                             </View>
                             <View style={styles.statCard}>
-                                <Text style={styles.statValue}>12</Text>
+                                <Text style={styles.statValue}>{user?.journalCount ?? 0}</Text>
                                 <Text style={styles.statLabel}>ENTRIES</Text>
                             </View>
                         </View>

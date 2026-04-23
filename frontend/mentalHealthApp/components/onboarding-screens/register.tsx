@@ -16,8 +16,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 // import { registerUser } from '@/services/apiService'; // uncomment when backend is running
 // TODO (auth team): import saveAuth from '@/services/auth' and call saveAuth(data.token, data.user.id, data.user.email) after successful registration to persist the auth token
-import { registerUser, saveUser } from '../../services/apiService';
+import { getUser, registerUser, saveUser } from '../../services/apiService';
 import { colors } from '@/assets/styles/colors';
+import { useAuth } from '../../hooks/useAuth';
   
 
 export default function RegisterScreen() { 
@@ -35,6 +36,8 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const { user, setUser } = useAuth();
 
   const passwordsMatch = confirmPassword.length > 0 && password === confirmPassword;
   const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword;
@@ -67,6 +70,7 @@ export default function RegisterScreen() {
 
       if (res.access_token) {
         await saveUser(res);
+        setUser(await getUser());
         console.log("Registered successfully");
         router.replace("/(tabs)");
         return;

@@ -24,8 +24,6 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const { user, setUser, jwt, setJwt } = useAuth();
 
-  console.log("here");
-
   useEffect(() => {console.log(user, jwt)},[user, jwt]);
 
   const handleLogin = async () => {
