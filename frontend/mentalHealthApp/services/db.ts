@@ -214,7 +214,7 @@ export async function initDb() {
 
     console.log("[db] init start");
 
-    await resetLocalTables(database);
+    // await resetLocalTables(database);
     await createCoreSchema(database);
     await migrateLegacyTimestampStorage(database);
 

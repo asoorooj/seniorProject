@@ -38,14 +38,6 @@ function variantForIndex(index: number): "green" | "coral" | "outline" {
   return "outline";
 }
 
-async function getUserRow(userId?: number) {
-  await initDb();
-  const result = await executeSqlAsync(`SELECT * FROM users WHERE id = ? LIMIT 1;`, [
-    userId ?? await AsyncStorage.getItem("id"),
-  ]);
-  return (result.rows as any).item(0) ?? null;
-}
-
 export async function setProfileCache(_profile: unknown, _userId:number) {
   // No-op by design: profile is derived from normalized backend-like tables.
   return null;
@@ -53,8 +45,6 @@ export async function setProfileCache(_profile: unknown, _userId:number) {
 
 export async function getProfileCache<T = unknown>(userId?:number) {
   await initDb();
-  const user = await getUserRow(userId);
-  if (!user) return null;
 
   userId = userId ?? Number(await AsyncStorage.getItem("id"));
 
@@ -103,8 +93,8 @@ export async function getProfileCache<T = unknown>(userId?:number) {
   }
 
   const profile = {
-    name: (user.email ?? "User").split("@")[0],
-    memberSince: monthYear(user.created_at),
+    name: (await AsyncStorage.getItem("email") ?? "User").split("@")[0],
+    memberSince: monthYear(await AsyncStorage.getItem("created_at")),
     scans: Number(counts.scans ?? 0),
     journals: Number(counts.journals ?? 0),
     streak,
