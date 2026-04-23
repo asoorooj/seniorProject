@@ -47,9 +47,13 @@ export function EmotionRadar({ emotionCounts, prominentEmotion }: EmotionRadarPr
 
     const maxValue = Math.max(...LABELS.map(l => emotionCounts[l] || 0), 1);
 
+    const MIN_VISUAL = 0.15;
+
     const values = LABELS.map(l => {
         const raw = (emotionCounts[l] || 0) / maxValue;
-        return raw > 0 ? Math.max(raw, MIN_VALUE) : 0;
+
+        // 👇 even zero values get a slight radius
+        return Math.max(raw, MIN_VISUAL);
     });
 
     const shapePoints = LABELS.map((_, i) => {
