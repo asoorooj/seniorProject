@@ -7,7 +7,7 @@ from google import genai
 from sqlalchemy import and_, or_
 
 from app.extensions import db
-from app.models.db_models import Message
+from app.models.db_models import Message, User
 
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -81,16 +81,25 @@ def _format_scores_for_prompt(emotion_scores):
     return str(emotion_scores)
 
 
-def quickEval(determined_label, emotion_scores):
+def quickEval(determined_label, emotion_scores, user=None, user_id=None):
     formatted_scores = _format_scores_for_prompt(emotion_scores)
-    chat = client.chats.create(
-        model="gemini-2.5-flash",
-        config=types.GenerateContentConfig(
-            system_instruction="""
+    if user is None and user_id is not None:
+        user = User.query.get(int(user_id))
+
+    system_instruction = """
                 You write one short, empathetic mental-health check-in message.
                 Mention the likely feeling and suggest one gentle next step.
                 Keep it to 1 sentence and under 25 words.
-                """,
+                """.strip()
+
+    user_context = _build_user_context_instruction(user)
+    if user_context:
+        system_instruction = f"{system_instruction}\n\n{user_context}"
+
+    chat = client.chats.create(
+        model="gemini-2.5-flash",
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
         ),
     )
     prompt = (
@@ -108,9 +117,61 @@ def quickEval(determined_label, emotion_scores):
     return f"You seem {determined_label.lower()}. Try one small calming activity and check in with yourself again soon."
 
 def _chat_config():
-    return types.GenerateContentConfig(
-        system_instruction=CHAT_SYSTEM_INSTRUCTION,
+    return types.GenerateContentConfig(system_instruction=CHAT_SYSTEM_INSTRUCTION)
+
+
+def _normalize_interest_items(items, limit=25):
+    if not isinstance(items, list):
+        return []
+
+    normalized = []
+    seen = set()
+    for item in items:
+        if item is None:
+            continue
+        text = item if isinstance(item, str) else str(item)
+        text = text.strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(text)
+        if len(normalized) >= limit:
+            break
+
+    return normalized
+
+
+def _build_user_context_instruction(user):
+    if user is None:
+        return None
+
+    likes = _normalize_interest_items(getattr(user, "likes_array", []) or [])
+    dislikes = _normalize_interest_items(getattr(user, "dislikes_array", []) or [])
+
+    if not likes and not dislikes:
+        return None
+
+    lines = ["User context (self-reported):"]
+    if likes:
+        lines.append(f"Likes: {', '.join(likes)}")
+    if dislikes:
+        lines.append(f"Dislikes: {', '.join(dislikes)}")
+    lines.append(
+        "Use this only as soft context to personalize examples and suggestions; do not over-assume."
     )
+    return "\n".join(lines)
+
+
+def _chat_config_for_user(user):
+    context = _build_user_context_instruction(user)
+    if not context:
+        return _chat_config()
+
+    system_instruction = f"{CHAT_SYSTEM_INSTRUCTION.strip()}\n\n{context}"
+    return types.GenerateContentConfig(system_instruction=system_instruction)
 
 
 def _build_gemini_history(user_id, limit=10):
@@ -141,10 +202,10 @@ def _build_gemini_history(user_id, limit=10):
     return history
 
 
-def createChat(history=None):
+def createChat(history=None, config=None):
     chat = client.chats.create(
         model=CHAT_MODEL,
-        config=_chat_config(),
+        config=config or _chat_config(),
         history=history or [],
     )
     return chat
@@ -166,7 +227,8 @@ def createChat(history=None):
 
 def create_chat_with_id(user_id):
     history = _build_gemini_history(user_id=user_id, limit=10)
-    chat = createChat(history=history)
+    user = User.query.get(int(user_id))
+    chat = createChat(history=history, config=_chat_config_for_user(user))
     return chat
 
 def get_chat_history(user_id, limit=20, before_id=None, before_ts=None):

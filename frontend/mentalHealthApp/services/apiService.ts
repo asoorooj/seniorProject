@@ -13,6 +13,11 @@ export type UserConsent = {
   stor_cons_image: boolean;
   stor_cons_audio: boolean;
 };
+
+export type UserInterests = {
+  likes: string[];
+  dislikes: string[];
+};
 export type Evaluation = {
   evaluation: {
     id: number;
@@ -50,7 +55,23 @@ async function safeJson(res: Response) {
   }
 }
 
+function safeParseJsonArray(value: unknown): string[] {
+  if (value == null) return [];
+  if (Array.isArray(value)) return value.map((v) => String(v));
+  if (typeof value !== "string") return [];
+  if (!value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((v) => String(v));
+  } catch {
+    return [];
+  }
+}
+
 export const saveUser = async (userDetails: {access_token:string, user:User}) => {
+  const likes = Array.isArray(userDetails.user.likes) ? userDetails.user.likes : [];
+  const dislikes = Array.isArray(userDetails.user.dislikes) ? userDetails.user.dislikes : [];
   await AsyncStorage.multiSet([
     ["token", userDetails.access_token ?? ""],
     ["email", String(userDetails.user.email ?? "")],
@@ -64,6 +85,8 @@ export const saveUser = async (userDetails: {access_token:string, user:User}) =>
     ["eval_image", String(userDetails.user.preferences.pref_eval_image ?? "")],
     ["eval_audio", String(userDetails.user.preferences.pref_eval_audio ?? "")],
     ["eval_text", String(userDetails.user.preferences.pref_eval_text ?? "")],
+    ["likes", JSON.stringify(likes)],
+    ["dislikes", JSON.stringify(dislikes)],
   ]);
 };
 
@@ -74,13 +97,17 @@ export const getUser = async (): Promise<User | null> => {
     "email",
     "external_id",
     "created_at",
-    "consent_chat",
+    "consent_chat", // legacy
+    "consent_text",
     "consent_image",
     "consent_audio",
     "streak",
+    "eval_face", // legacy
     "eval_image",
     "eval_audio",
     "eval_text",
+    "likes",
+    "dislikes",
   ];
 
   const entries = await AsyncStorage.multiGet(keys);
@@ -96,16 +123,18 @@ export const getUser = async (): Promise<User | null> => {
     external_id: data.external_id ?? "",
     created_at: data.created_at ?? "",
     storage_consent: {
-      stor_cons_text: data.consent_chat === "true",
+      stor_cons_text: (data.consent_text ?? data.consent_chat) === "true",
       stor_cons_image: data.consent_image === "true",
       stor_cons_audio: data.consent_audio === "true",
     },
     streak: Number(data.streak ?? 0),
     preferences: {
-      pref_eval_image: data.eval_face === "true",
+      pref_eval_image: (data.eval_image ?? data.eval_face) === "true",
       pref_eval_audio: data.eval_audio === "true",
       pref_eval_text: data.eval_text === "true",
     },
+    likes: safeParseJsonArray(data.likes),
+    dislikes: safeParseJsonArray(data.dislikes),
   };
 };
 
@@ -161,6 +190,8 @@ export const logout = async (jwt?:string) => { //temp method
     "eval_image",
     "eval_audio",
     "eval_text",
+    "likes",
+    "dislikes",
   ]);
   clearDatabase();
 };
@@ -178,7 +209,9 @@ export const syncUser = async (user:User) => {
         ["streak", String(user.streak ?? "")],
         ["eval_image", String(user.preferences.pref_eval_image ?? "")],
         ["eval_audio", String(user.preferences.pref_eval_audio ?? "")],
-        ["eval_text", String(user.preferences.pref_eval_text ?? "")],  
+        ["eval_text", String(user.preferences.pref_eval_text ?? "")],
+        ["likes", JSON.stringify(Array.isArray(user.likes) ? user.likes : [])],
+        ["dislikes", JSON.stringify(Array.isArray(user.dislikes) ? user.dislikes : [])],
       ]);
     }
   } catch (error){
@@ -207,6 +240,15 @@ export const syncUser = async (user:User) => {
     });
   } catch (error){
     console.error("[api] Failed to sync storage consent", error);
+  }
+  try{
+    const entries = Object.fromEntries(await AsyncStorage.multiGet(["likes","dislikes"]));
+    await updateUserInterests({
+      likes: safeParseJsonArray(entries.likes),
+      dislikes: safeParseJsonArray(entries.dislikes),
+    });
+  } catch (error){
+    console.error("[api] Failed to sync interests", error);
   }
 };
 
@@ -467,6 +509,21 @@ export async function updateUserConsent(
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json" },
     body: JSON.stringify(consent),
+  });
+
+  if (!res.ok) throw { status: res.status };
+
+  return res.json();
+}
+
+export async function updateUserInterests(interests: Partial<UserInterests>) {
+  const token = await AsyncStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/users/interests`, {
+    method: "PUT",
+    headers: { 
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json" },
+    body: JSON.stringify(interests),
   });
 
   if (!res.ok) throw { status: res.status };

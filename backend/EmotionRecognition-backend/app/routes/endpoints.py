@@ -59,6 +59,8 @@ def _user_to_dict(user):
         "id": user.id,
         "external_id": user.external_id,
         "created_at": user.created_at.isoformat(),
+        "likes": user.likes_array,
+        "dislikes": user.dislikes_array,
         "preferences": {
             "eval_face": user.pref_eval_image,
             "eval_audio": user.pref_eval_audio,
@@ -150,6 +152,8 @@ def get_current_user():
                 "created_at": user.created_at.isoformat(),
                 "email": user.email,
                 "consent_timestamp": user.consent_timestamp.isoformat(),
+                "likes": user.likes_array,
+                "dislikes": user.dislikes_array,
                 "preferences":{
                     "pref_eval_image": user.pref_eval_image,
                     "pref_eval_audio": user.pref_eval_audio,
@@ -261,6 +265,42 @@ def update_user_consent():
             "stor_cons_audio": user.stor_cons_audio,
             "stor_cons_text": user.stor_cons_text,
         },
+    ), 200
+
+
+@api_bp.put("/users/interests")
+@auth_required
+def update_user_interests():
+    payload = request.get_json(silent=True) or {}
+    user = g.current_user
+    user_id = user.id
+    if user.id != user_id:
+        return jsonify({"error": "unauthorized"}), 403
+    if not user:
+        return _json_error("User not found", 404)
+
+    updated = False
+
+    if "likes" in payload:
+        if not isinstance(payload["likes"], list):
+            return _json_error("likes must be an array")
+        user.likes_array = payload["likes"]
+        updated = True
+
+    if "dislikes" in payload:
+        if not isinstance(payload["dislikes"], list):
+            return _json_error("dislikes must be an array")
+        user.dislikes_array = payload["dislikes"]
+        updated = True
+
+    if not updated:
+        return _json_error("no valid fields provided")
+
+    db.session.commit()
+    return jsonify(
+        message="interests updated",
+        likes=user.likes_array,
+        dislikes=user.dislikes_array,
     ), 200
 
 
@@ -555,7 +595,7 @@ def recieve_eval():
             {"label": lbl, "probability": float(prob)}
             for lbl, prob in zip(FUSION_LABELS, probabilities)
         ]
-        quick_message = quickEval(label, probs_list)
+        quick_message = quickEval(label, probs_list, user=user)
 
         # Example response
         return jsonify({
@@ -1010,7 +1050,7 @@ def end_evaluation():
         fusion_label = fusion_output["fusion"]["label"]
         fusion_scores = {lbl: float(prob) for lbl, prob in zip(FUSION_LABELS, fusion_probs)}
 
-        suggestion = quickEval(fusion_label, fusion_scores)
+        suggestion = quickEval(fusion_label, fusion_scores, user=user)
 
         evaluation.label = fusion_label
         evaluation.scores = fusion_scores

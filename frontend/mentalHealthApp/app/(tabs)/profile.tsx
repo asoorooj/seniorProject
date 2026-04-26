@@ -41,6 +41,8 @@ const PLACEHOLDER_USER = {
   scans: 42,
   journals: 18,
   streak: 7,
+  likes:[],
+  dislikes:[]
 };
 
 const PLACEHOLDER_EMOTIONS: EmotionTag[] = [
@@ -56,6 +58,8 @@ type UserProfile = {
   scans: number;
   journals: number;
   streak: number;
+  likes:string[];
+  dislikes:string[];
 };
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -76,6 +80,8 @@ export default function ProfileScreen() {
   const { user: authUser, jwt, setJwt, setUser: setAuthUser, syncUserToCache: updateUserCache } = useAuth();
   const currentUserId = authUser?.id;
   const [user, setUser] = useState<UserProfile>(PLACEHOLDER_USER);
+  const [likes, setLikes] = useState<string[]>([]);
+  const [dislikes, setDislikes] = useState<string[]>([]);
   const [emotions, setEmotions] = useState<EmotionTag[]>(PLACEHOLDER_EMOTIONS);
   const [avatarId, setAvatarId] = useState(0);
   const [avatarPickerVisible, setAvatarPickerVisible] = useState(false);
@@ -97,7 +103,9 @@ export default function ProfileScreen() {
         memberSince,
         scans: count ?? PLACEHOLDER_USER.scans,
         journals: authUser?.journalCount ?? count,
-        streak: authUser?.streak ?? 0
+        streak: authUser?.streak ?? 0,
+        likes: authUser?.likes ?? [],
+        dislikes: authUser?.dislikes ?? []
       };
       let preferences: UserPreferences = {
         pref_eval_audio: authUser?.preferences?.pref_eval_audio ?? false,
@@ -112,11 +120,14 @@ export default function ProfileScreen() {
       setUser(user);
       setPreferences(preferences);
       setConsent(consent);
-      await updateUserCache();
+      if (authUser) await updateUserCache();
+
+      console.log("[USER]",authUser);
+
     };
 
     getValues();
-  },[authUser]);
+  },[authUser, likes, dislikes, updateUserCache]);
 
 
   const fetchData = useCallback(async () => {
@@ -157,32 +168,12 @@ export default function ProfileScreen() {
       [key]: !preferences[key],
     };
 
-    // if (!nextPreferences.pref_eval_audio && !nextPreferences.pref_eval_text && !nextPreferences.pref_eval_image) {
-    //   return;
-    // }
-
     if(authUser){
       setAuthUser({...authUser, preferences:{...nextPreferences}});
     } else { //if authUser is null
 
     }
 
-    // setPreferences(nextPreferences);
-    // setSavingPreferences(true);
-
-    // if (!jwt) {
-    //   setPreferences(preferences);
-    //   setSavingPreferences(false);
-    //   return;
-    // }
-    // const updated = await updateUserPreferences(nextPreferences,currentUserId);
-    // if (!updated?.preferences) {
-    //   setPreferences(preferences);
-    // } else {
-    //   await syncAllUnsynced(jwt, "action");
-    // }
-
-    // setSavingPreferences(false);
   }, [preferences, jwt, currentUserId]);
 
   const handleToggleConsent = useCallback((key: keyof UserConsent) => {

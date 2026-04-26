@@ -20,6 +20,8 @@ export type User = {
   }
   streak:number;
   token: string | undefined; 
+  likes:string[];
+  dislikes:string[];
   journalCount?:number;
 };
 

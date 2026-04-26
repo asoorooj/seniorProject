@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 from app.extensions import db
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -11,6 +12,9 @@ class User(db.Model):
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(256), nullable=False)
     consent_timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    likes = db.Column(db.Text, default="[]", nullable=False)
+    dislikes = db.Column(db.Text, default="[]", nullable=False)
 
     
 
@@ -35,6 +39,47 @@ class User(db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    @staticmethod
+    def _parse_json_array(value):
+        if value is None or value == "":
+            return []
+        if isinstance(value, (list, tuple)):
+            return list(value)
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except Exception:
+                return []
+            return parsed if isinstance(parsed, list) else []
+        return []
+
+    @staticmethod
+    def _dump_json_array(value):
+        if value is None or value == "":
+            return "[]"
+        if isinstance(value, str):
+            parsed = User._parse_json_array(value)
+            return json.dumps(parsed)
+        if isinstance(value, (list, tuple)):
+            return json.dumps(list(value))
+        raise ValueError("Value must be a JSON array string or a list")
+
+    @property
+    def likes_array(self):
+        return self._parse_json_array(self.likes)
+
+    @likes_array.setter
+    def likes_array(self, value):
+        self.likes = self._dump_json_array(value)
+
+    @property
+    def dislikes_array(self):
+        return self._parse_json_array(self.dislikes)
+
+    @dislikes_array.setter
+    def dislikes_array(self, value):
+        self.dislikes = self._dump_json_array(value)
 
 class Session(db.Model):
     __tablename__ = "sessions"
