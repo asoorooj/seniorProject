@@ -148,8 +148,8 @@ def _build_user_context_instruction(user):
     if user is None:
         return None
 
-    likes = _normalize_interest_items(getattr(user, "likes_array", []) or [])
-    dislikes = _normalize_interest_items(getattr(user, "dislikes_array", []) or [])
+    likes = _normalize_interest_items(getattr(user, "likes", []) or [])
+    dislikes = _normalize_interest_items(getattr(user, "dislikes", []) or [])
 
     if not likes and not dislikes:
         return None

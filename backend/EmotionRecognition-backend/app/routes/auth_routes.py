@@ -54,8 +54,8 @@ def register():
             "external_id": user.external_id,
             "consent_timestamp": user.consent_timestamp.isoformat() if user.consent_timestamp else None,
             "created_at": user.created_at.isoformat() if user.created_at else None,
-            "likes": user.likes_array,
-            "dislikes": user.dislikes_array,
+            "likes": user.likes or [],
+            "dislikes": user.dislikes or [],
             "preferences":{
                 "stor_cons_image":user.stor_cons_image,
                 "stor_cons_audio":user.stor_cons_audio,
@@ -110,8 +110,8 @@ def login():
             "external_id": user.external_id,
             "consent_timestamp": user.consent_timestamp.isoformat() if user.consent_timestamp else None,
             "created_at": user.created_at.isoformat() if user.created_at else None,
-            "likes": user.likes_array,
-            "dislikes": user.dislikes_array,
+            "likes": user.likes or [],
+            "dislikes": user.dislikes or [],
             "preferences":{
                 "stor_cons_image":user.stor_cons_image,
                 "stor_cons_audio":user.stor_cons_audio,

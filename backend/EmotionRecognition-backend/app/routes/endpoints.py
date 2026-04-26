@@ -61,8 +61,8 @@ def _user_to_dict(user):
         "id": user.id,
         "external_id": user.external_id,
         "created_at": user.created_at.isoformat(),
-        "likes": user.likes_array,
-        "dislikes": user.dislikes_array,
+        "likes": user.likes or [],
+        "dislikes": user.dislikes or [],
         "preferences": {
             "eval_face": user.pref_eval_image,
             "eval_audio": user.pref_eval_audio,
@@ -154,8 +154,8 @@ def get_current_user():
                 "created_at": user.created_at.isoformat(),
                 "email": user.email,
                 "consent_timestamp": user.consent_timestamp.isoformat(),
-                "likes": user.likes_array,
-                "dislikes": user.dislikes_array,
+                "likes": user.likes or [],
+                "dislikes": user.dislikes or [],
                 "preferences":{
                     "pref_eval_image": user.pref_eval_image,
                     "pref_eval_audio": user.pref_eval_audio,
@@ -286,13 +286,13 @@ def update_user_interests():
     if "likes" in payload:
         if not isinstance(payload["likes"], list):
             return _json_error("likes must be an array")
-        user.likes_array = payload["likes"]
+        user.likes = payload["likes"]
         updated = True
 
     if "dislikes" in payload:
         if not isinstance(payload["dislikes"], list):
             return _json_error("dislikes must be an array")
-        user.dislikes_array = payload["dislikes"]
+        user.dislikes = payload["dislikes"]
         updated = True
 
     if not updated:
@@ -301,8 +301,8 @@ def update_user_interests():
     db.session.commit()
     return jsonify(
         message="interests updated",
-        likes=user.likes_array,
-        dislikes=user.dislikes_array,
+        likes=user.likes or [],
+        dislikes=user.dislikes or [],
     ), 200
 
 
