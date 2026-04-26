@@ -3,6 +3,8 @@ import calendar
 import os
 import requests
 import time
+import subprocess
+import tempfile
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request
 from app.middleware.auth import auth_required
@@ -131,7 +133,7 @@ def _message_to_dict(message):
 @auth_required
 def list_users():
     users = User.query.all()
-    
+
     return jsonify(users=[_user_to_dict(u) for u in users]), 200
 
 
@@ -159,7 +161,7 @@ def get_current_user():
                     "stor_cons_image": user.stor_cons_image,
                     "stor_cons_audio": user.stor_cons_audio,
                     "stor_cons_text": user.stor_cons_text,
-                },                
+                },
                 "streak": user.streak
             },
             "journal_count":count
@@ -167,7 +169,7 @@ def get_current_user():
     except Exception as e:
         print(e)
         return jsonify({"error", str(e)}), 500
-    
+
 
 
 @api_bp.get("/users/<int:user_id>")
@@ -411,7 +413,7 @@ def get_evaluations_by_month():
             Evaluation.query
             .filter_by(user_id=user_id)
             .filter(Evaluation.timestamp >= start_date)
-            .filter(Evaluation.timestamp <= end_date)            
+            .filter(Evaluation.timestamp <= end_date)
             .filter(Evaluation.label.isnot(None))
             .filter(Evaluation.label != "")
             .order_by(Evaluation.id.desc())
@@ -608,7 +610,7 @@ def recieve_eval():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
+
 def _scores_with_raw(labels, probs, raw_label=None):
     scores = {lbl: float(prob) for lbl, prob in zip(labels, probs)}
     if raw_label is not None:
@@ -632,12 +634,12 @@ def _vector_to_scores_dict(vec):
     return {lbl: float(prob) for lbl, prob in zip(FUSION_LABELS, vec)}
 
 def save_full_evaluation(
-    user_id,
-    model_outputs,
-    text_data,
-    image_bytes,
-    audio_bytes,
-    suggestion=None
+        user_id,
+        model_outputs,
+        text_data,
+        image_bytes,
+        audio_bytes,
+        suggestion=None
 ): # {user_id, model_outputs, text, image, audio}
     try:
         fusion_output = model_outputs["fusion"]
@@ -723,7 +725,7 @@ def save_full_evaluation(
             "status": "error",
             "message": str(e)
         }
-    
+
 @api_bp.post("/startevaluation")
 @auth_required
 def start_evaluation():
@@ -739,8 +741,8 @@ def start_evaluation():
             timestamp=datetime.utcnow()
         )
         db.session.add(evaluation)
-        db.session.flush() 
-        db.session.commit() 
+        db.session.flush()
+        db.session.commit()
     except Exception as e:
         db.session.rollback()
         return jsonify({
@@ -770,10 +772,10 @@ def start_evaluation_face():
         elif request.is_json:
             image_b64 = payload.get("image")
             if image_b64:
-                    if "," in image_b64:
-                        image_b64 = image_b64.split(",")[1]
-                    image_b64 = image_b64 + '=' * (-len(image_b64) % 4)
-                    image_bytes = base64.b64decode(image_b64)
+                if "," in image_b64:
+                    image_b64 = image_b64.split(",")[1]
+                image_b64 = image_b64 + '=' * (-len(image_b64) % 4)
+                image_bytes = base64.b64decode(image_b64)
         pred, probs, vec = predict_face(image_bytes)
         image_eval = ImageEvalutations.query.filter_by(
             evaluation_id=evaluation_id
@@ -797,11 +799,11 @@ def start_evaluation_face():
         else:
             print("Will NOT store image")
 
-        db.session.flush() 
-        db.session.commit() 
-    except Exception as e:        
+        db.session.flush()
+        db.session.commit()
+    except Exception as e:
         db.session.rollback()
-        print("ERROR:", str(e)) 
+        print("ERROR:", str(e))
         return jsonify({
             "status": "error",
             "message": str(e)
@@ -818,13 +820,13 @@ def start_evaluation_face():
 def start_eval_text():
     payload = request.get_json(silent=True) or {}
     user = g.current_user
-    
+
     evaluation_id = payload.get("evaluationId")
     text = payload.get("text")
     evaluation = Evaluation.query.get(evaluation_id)
     if not evaluation or evaluation.user_id != user.id:
         return jsonify({"error": "unauthorized"}), 403
-    
+
     try:
         pred, probs, vec = predict_emotion_text(text)
         text_eval = TextEvalutations.query.filter_by(
@@ -932,12 +934,16 @@ def start_eval_audio():
 
             db.session.flush()
             db.session.commit()
-        except Exception:
+
+        except Exception as e:
             db.session.rollback()
+            import traceback
+            traceback.print_exc()
             return jsonify({
                 "status": "error",
-                "message": "failed to create an audio evaluation"
+                "message": str(e)
             }), 500
+
         return jsonify({
             "evaluation_id": evaluation_id,
             "status": "succesfully created evaluation",
@@ -1031,14 +1037,14 @@ def end_evaluation():
             Evaluation.user_id == user.id,
             Evaluation.timestamp >= yesterday_start,
             Evaluation.timestamp <= yesterday_end,
-        ).first() is not None
+            ).first() is not None
 
         # check if user already has an evaluation today
         had_today = Evaluation.query.filter(
             Evaluation.user_id == user.id,
             Evaluation.timestamp >= today_start,
             Evaluation.timestamp <= today_end,
-        ).first() is not None
+            ).first() is not None
 
         # if no evaluation yesterday, reset streak
         if not had_yesterday:
@@ -1154,98 +1160,44 @@ def get_chat_history_endpoint():
     )
     return jsonify(payload), 200
 
+
 def convert_m4a_bytes_to_wav_bytes(m4a_bytes: bytes) -> bytes:
-    print("convert function")
+    with tempfile.NamedTemporaryFile(suffix=".m4a", delete=False) as tmp_in:
+        tmp_in.write(m4a_bytes)
+        tmp_in_path = tmp_in.name
+
+    tmp_out_path = tmp_in_path.replace(".m4a", ".wav")
+
     try:
-        headers = {
-            "Authorization": f"Bearer {CLOUDCONVERT_API_KEY}",
-            "Content-Type": "application/json",
-        }
-
-        # 1. Create upload task
-        job_payload = {
-            "tasks": {
-                "upload-my-file": {
-                    "operation": "import/upload"
-                },
-                "convert-my-file": {
-                    "operation": "convert",
-                    "input": "upload-my-file",
-                    "output_format": "wav"
-                },
-                "export-my-file": {
-                    "operation": "export/url",
-                    "input": "convert-my-file"
-                }
-            }
-        }
-
-        job_res = requests.post(
-            "https://api.cloudconvert.com/v2/jobs",
-            json=job_payload,
-            headers=headers
+        process = subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", tmp_in_path,
+                "-f", "wav",
+                "-acodec", "pcm_s16le",
+                "-ac", "1",
+                "-ar", "16000",
+                tmp_out_path
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
         )
 
-        print(job_res)
+        if process.returncode != 0:
+            raise Exception(f"FFmpeg failed: {process.stderr.decode()}")
 
-        job = job_res.json()["data"]
-        tasks = job["tasks"]
+        with open(tmp_out_path, "rb") as f:
+            wav_bytes = f.read()
 
+        print(f"Output wav_bytes length: {len(wav_bytes)}")
+        return wav_bytes
 
-        upload_task = next(t for t in tasks if t["name"] == "upload-my-file")
-        upload_url = upload_task["result"]["form"]["url"]
-        upload_fields = upload_task["result"]["form"]["parameters"]
-
-        # 2. Upload file bytes to CloudConvert
-        files = {
-            "file": ("audio.m4a", m4a_bytes)
-        }
-
-        upload_res = requests.post(
-            upload_url,
-            data=upload_fields,
-            files=files
-        )
-
-        if upload_res.status_code not in [200, 201, 204]:
-            raise Exception("Upload to CloudConvert failed")
-
-        job_id = job["id"]
-
-        # 3. Poll job until finished
-        while True:
-            job_status = requests.get(
-                f"https://api.cloudconvert.com/v2/jobs/{job_id}",
-                headers=headers
-            ).json()["data"]
-
-            status = job_status["status"]
-
-            if status == "finished":
-                break
-            if status == "error":
-                raise Exception("CloudConvert job failed")
-
-            time.sleep(2)
-
-        # 4. Get export URL
-        export_task = next(
-            t for t in job_status["tasks"]
-            if t["name"] == "export-my-file"
-        )
-
-        file_url = export_task["result"]["files"][0]["url"]
-
-        # 5. Download WAV file
-        wav_response = requests.get(file_url)
-
-        if wav_response.status_code != 200:
-            raise Exception("Failed to download WAV file")
-    except Exception as e:
-        print(e)
-        raise Exception(e)
-
-    return wav_response.content
+    finally:
+        # Clean up temp files
+        if os.path.exists(tmp_in_path):
+            os.remove(tmp_in_path)
+        if os.path.exists(tmp_out_path):
+            os.remove(tmp_out_path)
 
 @api_bp.post("/chat/statistics-analysis")
 @auth_required
