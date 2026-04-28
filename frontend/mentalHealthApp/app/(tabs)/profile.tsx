@@ -17,6 +17,8 @@ import { EmotionalProfileCard, EmotionTag } from '@/components/profile/Emotional
 import { StoragePermissionsCard } from '@/components/profile/StoragePermissionsCard';
 import { ConsentPermissionsCard } from '@/components/profile/ConsentPermissionsCard';
 import { AccountCard } from '@/components/profile/AccountCard';
+import { InterestsCard } from '@/components/profile/InterestsCard';
+import { InterestsEditModal } from '@/components/profile/InterestsEditModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '@/assets/styles/colors';
 import { sectionLabel } from "@/assets/styles/text";
@@ -82,6 +84,7 @@ export default function ProfileScreen() {
   const [user, setUser] = useState<UserProfile>(PLACEHOLDER_USER);
   const [likes, setLikes] = useState<string[]>([]);
   const [dislikes, setDislikes] = useState<string[]>([]);
+  const [interestsEditVisible, setInterestsEditVisible] = useState(false);
   const [emotions, setEmotions] = useState<EmotionTag[]>(PLACEHOLDER_EMOTIONS);
   const [avatarId, setAvatarId] = useState(0);
   const [avatarPickerVisible, setAvatarPickerVisible] = useState(false);
@@ -118,6 +121,8 @@ export default function ProfileScreen() {
         stor_cons_image: authUser?.storage_consent?.stor_cons_image ?? true,
       };
       setUser(user);
+      setLikes(authUser?.likes ?? []);
+      setDislikes(authUser?.dislikes ?? []);
       setPreferences(preferences);
       setConsent(consent);
       if (authUser) await updateUserCache();
@@ -261,6 +266,25 @@ export default function ProfileScreen() {
         />
 
         <View style={styles.content}>
+          <Text style={sectionLabel}>Your Interests</Text>
+          <InterestsCard
+            likes={likes}
+            dislikes={dislikes}
+            onEdit={() => setInterestsEditVisible(true)}
+          />
+          <InterestsEditModal
+            visible={interestsEditVisible}
+            initialLikes={likes}
+            initialDislikes={dislikes}
+            onClose={() => setInterestsEditVisible(false)}
+            onSave={(newLikes, newDislikes) => {
+              setLikes(newLikes);
+              setDislikes(newDislikes);
+              if (authUser) setAuthUser({ ...authUser, likes: newLikes, dislikes: newDislikes });
+              setInterestsEditVisible(false);
+            }}
+          />
+
           <Text style={sectionLabel}>Your Emotional Profile</Text>
           <EmotionalProfileCard emotions={emotions} />
 

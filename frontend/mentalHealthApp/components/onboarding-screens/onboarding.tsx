@@ -12,18 +12,26 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { updateUserConsent } from '@/services/apiService';
+import { updateUserConsent, updateUserInterests } from '@/services/apiService';
 import { setNeedsOnboarding } from '@/services/auth';
 import { colors } from '@/assets/styles/colors';
 import { sectionLabel } from '@/assets/styles/text';
+import InterestsStep, {
+  buildChipState,
+  getLikes,
+  getDislikes,
+} from './InterestsStep';
+import type { InterestState } from './InterestsStep';
+import { useAuth } from '@/hooks/useAuth';
 
 type ConsentKey = 'consentImage' | 'consentAudio' | 'consentChat';
 
 const CONSENT_ITEMS: { key: ConsentKey; icon: React.ComponentProps<typeof Feather>['name']; label: string; description: string }[] = [
-  { key: 'consentImage', icon: 'camera',         label: 'Face Analysis', description: 'Analyze facial expressions to detect emotional cues.' },
+  { key: 'consentImage', icon: 'camera',         label: 'Face Analysis',  description: 'Analyze facial expressions to detect emotional cues.' },
   { key: 'consentAudio', icon: 'mic',            label: 'Voice Analysis', description: 'Analyze voice recordings to identify emotional patterns.' },
   { key: 'consentChat',  icon: 'message-circle', label: 'Word Analysis',  description: 'For journaling and text inputs.' },
 ];
+
 const SCAN_ARROW_COLOR = '#7B6FD8';
 
 export default function OnboardingScreen() {
@@ -32,114 +40,181 @@ export default function OnboardingScreen() {
   const { width } = useWindowDimensions();
   const isWide   = width >= 900;
   const isTablet = width >= 700;
+  const { user: authUser, setUser: setAuthUser } = useAuth();
 
+  const [step, setStep] = useState(0);
   const [consent, setConsent] = useState({ consentImage: true, consentAudio: true, consentChat: true });
+  const [chipState, setChipState] = useState<Record<string, InterestState>>(
+    buildChipState(authUser?.likes ?? [], authUser?.dislikes ?? [])
+  );
   const [loading, setLoading] = useState(false);
 
   function toggle(key: ConsentKey) {
     setConsent((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
-  async function handleContinue() {
+  async function handleConsentContinue() {
     setLoading(true);
     try {
       await updateUserConsent({
         stor_cons_image: consent.consentImage,
         stor_cons_audio: consent.consentAudio,
-        stor_cons_text: consent.consentChat,
+        stor_cons_text:  consent.consentChat,
       });
     } catch {
-      // non-blocking — user can update from profile later
+      // non-blocking
+    } finally {
+      setLoading(false);
     }
+    setStep(1);
+  }
+
+  async function handleFinish() {
+    setLoading(true);
+    const likes    = getLikes(chipState);
+    const dislikes = getDislikes(chipState);
+    try {
+      await updateUserInterests({ likes, dislikes });
+      if (authUser) {
+        setAuthUser({ ...authUser, likes, dislikes });
+      }
+    } catch {
+      // non-blocking
+    }
+    await setNeedsOnboarding(false);
+    setLoading(false);
+    router.replace('/survey');
+  }
+
+  async function handleSkip() {
     await setNeedsOnboarding(false);
     router.replace('/survey');
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, isWide && styles.scrollContentWide]}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={[styles.contentWrapper, isWide && styles.contentWrapperWide]}>
+      {step === 0 ? (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.scrollContent, isWide && styles.scrollContentWide]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.contentWrapper, isWide && styles.contentWrapperWide]}>
+            <TouchableOpacity
+              style={[styles.headerBackButton, { top: -48, left: 4 + insets.left }]}
+              onPress={() => router.replace('/register?agreed=true')}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Feather name="arrow-left" size={22} color={SCAN_ARROW_COLOR} />
+            </TouchableOpacity>
+
+            <Image
+              source={require('../../assets/images/logo.png')}
+              style={[styles.logo, isTablet && styles.logoTablet]}
+              resizeMode="contain"
+            />
+
+            <Text style={[styles.title, isTablet && styles.titleTablet]}>
+              Understand Yourself Better
+            </Text>
+
+            <Text style={[styles.description, isTablet && styles.descriptionTablet]}>
+              We use advanced AI to analyze your voice, facial expressions, and words
+              to help you understand and enhance your emotional well-being.
+            </Text>
+
+            <Text style={styles.consentLabel}>Choose what kokoro can access</Text>
+            <View style={[styles.consentCard, isWide && styles.consentCardWide]}>
+              {CONSENT_ITEMS.map((item, index) => (
+                <React.Fragment key={item.key}>
+                  <TouchableOpacity
+                    style={styles.consentRow}
+                    activeOpacity={0.75}
+                    onPress={() => toggle(item.key)}
+                  >
+                    <Feather
+                      name={consent[item.key] ? 'check-square' : 'square'}
+                      size={22}
+                      color={consent[item.key] ? colors.primary : colors.accentDark}
+                      style={styles.checkIcon}
+                    />
+                    <View style={styles.consentIconBox}>
+                      <Feather name={item.icon} size={18} color={colors.textPrimary} />
+                    </View>
+                    <View style={styles.consentText}>
+                      <Text style={styles.consentItemLabel}>{item.label}</Text>
+                      <Text style={styles.consentItemDesc}>{item.description}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  {index < CONSENT_ITEMS.length - 1 && <View style={styles.divider} />}
+                </React.Fragment>
+              ))}
+            </View>
+
+            <Text style={styles.consentNote}>You can update these any time from your profile.</Text>
+
+            <TouchableOpacity
+              style={[styles.continueButton, isWide && styles.continueButtonWide]}
+              activeOpacity={0.8}
+              onPress={handleConsentContinue}
+              disabled={loading}
+            >
+              {loading
+                ? <ActivityIndicator color={colors.surface} />
+                : <Text style={styles.continueButtonText}>Continue</Text>
+              }
+            </TouchableOpacity>
+
+            <View style={styles.privacyRow}>
+              <Image
+                source={require('../../assets/images/fi-rs-shield-check.png')}
+                style={styles.icon}
+              />
+              <Text style={styles.privacyText}>Your privacy is deeply respected</Text>
+            </View>
+          </View>
+        </ScrollView>
+      ) : (
+        <View style={[styles.interestsWrapper, isWide && styles.interestsWrapperWide]}>
           <TouchableOpacity
-            style={[
-              styles.headerBackButton,
-              { top: -48, left: 4 + insets.left },
-            ]}
-            onPress={() => router.replace('/register?agreed=true')}
+            style={styles.backButton}
+            onPress={() => setStep(0)}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <Feather name="arrow-left" size={22} color={SCAN_ARROW_COLOR} />
           </TouchableOpacity>
-          <Image
-            source={require('../../assets/images/logo.png')}
-            style={[styles.logo, isTablet && styles.logoTablet]}
-            resizeMode="contain"
-          />
 
-          <Text style={[styles.title, isTablet && styles.titleTablet]}>
-            Understand Yourself Better
+          <Text style={[styles.title, styles.interestsTitle]}>What works for you?</Text>
+          <Text style={styles.interestsSubtitle}>
+            Select activities you enjoy or want to avoid — we&apos;ll personalise your experience.
           </Text>
 
-          <Text style={[styles.description, isTablet && styles.descriptionTablet]}>
-            We use advanced AI to analyze your voice, facial expressions, and words
-            to help you understand and enhance your emotional well-being.
-          </Text>
-
-          {/* Consent checklist */}
-          <Text style={styles.consentLabel}>Choose what kokoro can access</Text>
-          <View style={[styles.consentCard, isWide && styles.consentCardWide]}>
-            {CONSENT_ITEMS.map((item, index) => (
-              <React.Fragment key={item.key}>
-                <TouchableOpacity
-                  style={styles.consentRow}
-                  activeOpacity={0.75}
-                  onPress={() => toggle(item.key)}
-                >
-                  <Feather
-                    name={consent[item.key] ? 'check-square' : 'square'}
-                    size={22}
-                    color={consent[item.key] ? colors.primary : colors.accentDark}
-                    style={styles.checkIcon}
-                  />
-                  <View style={styles.consentIconBox}>
-                    <Feather name={item.icon} size={18} color={colors.textPrimary} />
-                  </View>
-                  <View style={styles.consentText}>
-                    <Text style={styles.consentItemLabel}>{item.label}</Text>
-                    <Text style={styles.consentItemDesc}>{item.description}</Text>
-                  </View>
-                </TouchableOpacity>
-                {index < CONSENT_ITEMS.length - 1 && <View style={styles.divider} />}
-              </React.Fragment>
-            ))}
+          <View style={styles.stepIndicator}>
+            <View style={[styles.stepDot, styles.stepDotDone]} />
+            <View style={[styles.stepDot, styles.stepDotActive]} />
           </View>
 
-          <Text style={styles.consentNote}>You can update these any time from your profile.</Text>
+          <InterestsStep chipState={chipState} onChange={setChipState} />
 
-          <TouchableOpacity
-            style={[styles.continueButton, isWide && styles.continueButtonWide]}
-            activeOpacity={0.8}
-            onPress={handleContinue}
-            disabled={loading}
-          >
-            {loading
-              ? <ActivityIndicator color={colors.surface} />
-              : <Text style={styles.continueButtonText}>Continue</Text>
-            }
-          </TouchableOpacity>
+          <View style={styles.interestsActions}>
+            <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
+              <Text style={styles.skipText}>Skip for now</Text>
+            </TouchableOpacity>
 
-          <View style={styles.privacyRow}>
-            <Image
-              source={require('../../assets/images/fi-rs-shield-check.png')}
-              style={styles.icon}
-            />
-            <Text style={styles.privacyText}>Your privacy is deeply respected</Text>
+            <TouchableOpacity
+              style={styles.finishButton}
+              activeOpacity={0.8}
+              onPress={handleFinish}
+              disabled={loading}
+            >
+              {loading
+                ? <ActivityIndicator color={colors.surface} />
+                : <Text style={styles.continueButtonText}>Finish</Text>
+              }
+            </TouchableOpacity>
           </View>
         </View>
-      </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -199,7 +274,6 @@ const styles = StyleSheet.create({
   },
   descriptionTablet: { maxWidth: 720 },
 
-  // ── Consent checklist
   consentLabel: {
     ...sectionLabel,
     marginBottom: 12,
@@ -224,7 +298,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  checkIcon:     { marginTop: 2, marginRight: 10 },
+  checkIcon:      { marginTop: 2, marginRight: 10 },
   consentIconBox: {
     width: 34,
     height: 34,
@@ -247,7 +321,6 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
 
-  // ── CTA
   continueButton: {
     width: '100%',
     height: 52,
@@ -271,7 +344,6 @@ const styles = StyleSheet.create({
     color: colors.surface,
   },
 
-  // ── Privacy
   privacyRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -287,5 +359,87 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textAlign: 'center',
     flexShrink: 1,
+  },
+
+  // Step 2 — interests
+  interestsWrapper: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 56,
+    paddingBottom: 16,
+  },
+  interestsWrapperWide: {
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 860,
+  },
+  backButton: {
+    marginBottom: 16,
+    alignSelf: 'flex-start',
+  },
+  interestsTitle: {
+    marginBottom: 8,
+  },
+  interestsSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+
+  stepIndicator: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  stepDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accentLight,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  stepDotDone: {
+    backgroundColor: colors.accent,
+  },
+  stepDotActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+
+  interestsActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  skipButton: {
+    flex: 1,
+    height: 52,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+  },
+  skipText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  finishButton: {
+    flex: 2,
+    height: 52,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#F22705',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
   },
 });
