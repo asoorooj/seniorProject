@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -17,9 +18,19 @@ import { Feather } from '@expo/vector-icons';
 // import { registerUser } from '@/services/apiService'; // uncomment when backend is running
 // TODO (auth team): import saveAuth from '@/services/auth' and call saveAuth(data.token, data.user.id, data.user.email) after successful registration to persist the auth token
 import { getUser, registerUser, saveUser } from '../../services/apiService';
+import { getNeedsOnboarding, setNeedsOnboarding } from '../../services/auth';
 import { colors } from '@/assets/styles/colors';
 import { useAuth } from '../../hooks/useAuth';
   
+const REGISTER_DRAFT_KEY = 'register_draft';
+const SCAN_ARROW_COLOR = '#7B6FD8';
+
+type RegisterDraft = {
+  fullName: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+};
 
 export default function RegisterScreen() { 
   const router = useRouter();
@@ -37,21 +48,88 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const { user, setUser } = useAuth();
+  const { setUser } = useAuth();
 
   const passwordsMatch = confirmPassword.length > 0 && password === confirmPassword;
   const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword;
 
   useEffect(() => {
+    let mounted = true;
+
+    const restoreDraft = async () => {
+      try {
+        const rawDraft = await AsyncStorage.getItem(REGISTER_DRAFT_KEY);
+        if (!rawDraft || !mounted) return;
+
+        const draft = JSON.parse(rawDraft) as Partial<RegisterDraft>;
+        setFullName(draft.fullName ?? '');
+        setEmail(draft.email ?? '');
+        setPassword(draft.password ?? '');
+        setConfirmPassword(draft.confirmPassword ?? '');
+        setAgreed(agreedParam === 'true');
+        if (agreedParam === 'true' && mounted) {
+          setShowTermsError(false);
+        }
+      } catch (error) {
+        console.warn('[register] could not restore draft', error);
+      }
+    };
+
+    restoreDraft();
+
     if (agreedParam === 'true') {
       setAgreed(true);
       setShowTermsError(false);
     }
+
+    return () => {
+      mounted = false;
+    };
   }, [agreedParam]);
+
+  useEffect(() => {
+    const persistDraft = async () => {
+      try {
+        await AsyncStorage.setItem(
+          REGISTER_DRAFT_KEY,
+          JSON.stringify({
+            fullName,
+            email,
+            password,
+            confirmPassword,
+          } satisfies RegisterDraft)
+        );
+      } catch (error) {
+        console.warn('[register] could not persist draft', error);
+      }
+    };
+
+    persistDraft();
+  }, [fullName, email, password, confirmPassword]);
+
+  async function handleBackPress() {
+    if (!await getUser()) {
+      router.replace('/');
+      return;
+    }
+
+    const needsOnboarding = await getNeedsOnboarding();
+    router.replace(needsOnboarding ? '/onboarding' : '/(tabs)');
+  }
 
   async function handleCreateAccount() {
     if (!agreed) {
       setShowTermsError(true);
+      return;
+    }
+
+    if (!email.trim() || !password.trim()) {
+      setError('Email and password are required');
+      return;
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
       return;
     }
 
@@ -70,9 +148,11 @@ export default function RegisterScreen() {
 
       if (res.access_token) {
         await saveUser(res);
+        await setNeedsOnboarding(true);
+        await AsyncStorage.removeItem(REGISTER_DRAFT_KEY);
         setUser(await getUser());
         console.log("Registered successfully");
-        router.replace("/(tabs)");
+        router.replace("/onboarding");
         return;
       }
 
@@ -80,7 +160,7 @@ export default function RegisterScreen() {
       console.warn(res);
     } catch (err) {
       console.log("REGISTER ERROR:", err);
-      setError('Something went wrong while creating your account');
+      setError(err instanceof Error ? err.message : 'Something went wrong while creating your account');
     } finally {
       setLoading(false);
     }
@@ -106,6 +186,16 @@ export default function RegisterScreen() {
             end={{ x: 0.85, y: 0.8 }}
             style={[styles.topCard, { paddingTop: insets.top + 20 }]}
           >
+            <TouchableOpacity
+              style={[
+                styles.headerBackButton,
+                { top: insets.top + 8, left: 32 + insets.left },
+              ]}
+              onPress={handleBackPress}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Feather name="arrow-left" size={22} color={SCAN_ARROW_COLOR} />
+            </TouchableOpacity>
             <View style={styles.topCardInner}>
               <Text style={styles.topCardTitle}>Create Account</Text>
               <Text style={styles.topCardSubtitle}>
@@ -290,6 +380,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  headerBackButton: {
+    position: 'absolute',
+    zIndex: 1,
   },
 
   topCardInner: {

@@ -8,11 +8,10 @@ import {
   ScrollView,
   ActivityIndicator,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MessageBubble from "../components/chat/MessageBubble";
 import { Message } from "../components/chat/Message";
 import ChatInput from "../components/chat/ChatInput";
@@ -265,7 +264,15 @@ const handleSendMessage = async (text: string) => {
 
   return (
     <SafeAreaView style={styles.screen} edges={["left", "right"]}>
-      <View style={styles.topHeader}>
+      <View
+        style={[
+          styles.topHeader,
+          {
+            height: insets.top + 84,
+            paddingTop: insets.top + 12,
+          },
+        ]}
+      >
         <LinearGradient
           colors={["#F27059", "#9B8FE8"]}
           start={{ x: 0, y: 0 }}
@@ -288,8 +295,18 @@ const handleSendMessage = async (text: string) => {
         </View>
 
         <TouchableOpacity
-          style={styles.closeButton}
-          onPress={() => router.push("/(tabs)/journal")}
+          style={[
+            styles.closeButton,
+            { top: insets.top + 10 },
+          ]}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+              return;
+            }
+            router.replace("/(tabs)");
+          }}
         >
           <Ionicons name="close" size={24} color="#1E1830" />
         </TouchableOpacity>
@@ -363,9 +380,7 @@ const styles = StyleSheet.create({
   },
 
   topHeader: {
-    height: 115,
     backgroundColor: "#FFFFFF",
-    paddingTop: 31,
     paddingLeft: 20,
     paddingRight: 20,
     flexDirection: "row",
@@ -419,10 +434,9 @@ const styles = StyleSheet.create({
 
   closeButton: {
     position: "absolute",
-    top: 25,
     right: 28,
-    width: 24,
-    height: 24,
+    width: 36,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
   },

@@ -9,10 +9,11 @@ import {
   useWindowDimensions,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { updateConsent } from '@/services/apiService';
+import { updateUserConsent } from '@/services/apiService';
+import { setNeedsOnboarding } from '@/services/auth';
 import { colors } from '@/assets/styles/colors';
 import { sectionLabel } from '@/assets/styles/text';
 
@@ -23,9 +24,11 @@ const CONSENT_ITEMS: { key: ConsentKey; icon: React.ComponentProps<typeof Feathe
   { key: 'consentAudio', icon: 'mic',            label: 'Voice Analysis', description: 'Analyze voice recordings to identify emotional patterns.' },
   { key: 'consentChat',  icon: 'message-circle', label: 'Word Analysis',  description: 'For journaling and text inputs.' },
 ];
+const SCAN_ARROW_COLOR = '#7B6FD8';
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isWide   = width >= 900;
   const isTablet = width >= 700;
@@ -40,15 +43,16 @@ export default function OnboardingScreen() {
   async function handleContinue() {
     setLoading(true);
     try {
-      await updateConsent({
-        consent_image: consent.consentImage,
-        consent_audio: consent.consentAudio,
-        consent_chat:  consent.consentChat,
+      await updateUserConsent({
+        stor_cons_image: consent.consentImage,
+        stor_cons_audio: consent.consentAudio,
+        stor_cons_text: consent.consentChat,
       });
     } catch {
       // non-blocking — user can update from profile later
     }
-    router.push('/survey');
+    await setNeedsOnboarding(false);
+    router.replace('/survey');
   }
 
   return (
@@ -59,6 +63,16 @@ export default function OnboardingScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.contentWrapper, isWide && styles.contentWrapperWide]}>
+          <TouchableOpacity
+            style={[
+              styles.headerBackButton,
+              { top: -48, left: 4 + insets.left },
+            ]}
+            onPress={() => router.replace('/register?agreed=true')}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Feather name="arrow-left" size={22} color={SCAN_ARROW_COLOR} />
+          </TouchableOpacity>
           <Image
             source={require('../../assets/images/logo.png')}
             style={[styles.logo, isTablet && styles.logoTablet]}
@@ -152,6 +166,10 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     paddingHorizontal: 36,
     paddingVertical: 40,
+  },
+  headerBackButton: {
+    position: 'absolute',
+    zIndex: 1,
   },
 
   logo:       { width: 141, height: 176, marginBottom: 28 },

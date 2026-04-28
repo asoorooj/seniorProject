@@ -48,7 +48,7 @@ const WelcomeScreen = () => {
           <TouchableOpacity
             style={styles.primaryButton}
             activeOpacity={0.8}
-            onPress={() => router.push('/register')}
+            onPress={() => router.navigate('/register')}
           >
             <Text style={styles.primaryButtonText}>GET STARTED</Text>
           </TouchableOpacity>
@@ -56,7 +56,7 @@ const WelcomeScreen = () => {
           <TouchableOpacity
             style={styles.secondaryButton}
             activeOpacity={0.8}
-            onPress={() => router.push('/login')}
+            onPress={() => router.navigate('/login')}
           >
             <Text style={styles.secondaryButtonText}>
               I ALREADY HAVE AN ACCOUNT
