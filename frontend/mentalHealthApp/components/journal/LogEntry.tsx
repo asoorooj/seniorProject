@@ -69,13 +69,12 @@ export function LogEntry({ entry }: { entry: LogEntryData }) {
                     ))}
                 </View>
 
-                {entry.journalText && (
+                {entry.suggestion && (
                     <View>
-                        <Text style={styles.expandToggle}>{expanded ? '▲' : '▼'} your words & suggestions</Text>
+                        <Text style={styles.expandToggle}>{expanded ? '▲' : '▼'} your suggestions</Text>
                         <Animated.View style={[styles.journalExpand, { maxHeight, overflow: 'hidden' }]}>
                             <View style={styles.journalDivider} />
                             <Text style={styles.journalLabel}>YOUR JOURNAL</Text>
-                            <Text style={styles.journalQuote}>{entry.journalText}</Text>
 
                             <View style={styles.suggestionBubble}>
                                 <Text style={styles.suggestionQ}>Q: What would help right now?</Text>
