@@ -369,8 +369,12 @@ export default function FaceSurveyScreen() {
     let mounted = true;
     const loadPreferences = async () => {
       if (!user) return;
-      const currentUser = await fetchCurrentUser();
-      if (!mounted) return;
+      try {
+        await fetchCurrentUser();
+        if (!mounted) return;
+      } catch (error) {
+        console.warn("[survey] could not refresh current user", error);
+      }
     };
     loadPreferences();
     return () => {

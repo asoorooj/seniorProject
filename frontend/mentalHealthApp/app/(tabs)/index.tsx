@@ -88,6 +88,31 @@ function getActivity(mood: string): Activity {
   return ACTIVITIES.neutral;
 }
 
+function parseAppTimestamp(value: string | number | Date): Date {
+  if (value instanceof Date) return new Date(value.getTime());
+  if (typeof value === 'number') return new Date(value);
+
+  const raw = String(value).trim().replace(' ', 'T');
+  const numeric = Number(raw);
+  if (Number.isFinite(numeric)) return new Date(numeric);
+
+  const hasTimezone = /(Z|[+-]\d{2}:\d{2}|[+-]\d{4})$/i.test(raw);
+  const normalized = /^\d{4}-\d{2}-\d{2}T/.test(raw) && !hasTimezone ? `${raw}Z` : raw;
+
+  const parsed = new Date(normalized);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+
+  return new Date(raw);
+}
+
+function toLocalDateKey(value: string | number | Date): string {
+  const d = parseAppTimestamp(value);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function buildRecommendation(entry: RawEntry): Recommendation {
   const moodLabel = getMoodLabel(entry.mood);
   const activity = getActivity(entry.mood);
@@ -154,8 +179,8 @@ export default function HomeScreen() {
               };
               const sorted = [...data.evaluations].sort(
                 (a: any, b: any) =>
-                  new Date(b.evaluation.timestamp).getTime() -
-                  new Date(a.evaluation.timestamp).getTime()
+                  parseAppTimestamp(b.evaluation.timestamp).getTime() -
+                  parseAppTimestamp(a.evaluation.timestamp).getTime()
               );
               const e = sorted[0];
               entry = {
@@ -184,11 +209,11 @@ export default function HomeScreen() {
     }, [user?.id])
   );
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = toLocalDateKey(new Date());
 
   const moodByDay: Record<string, string> = {};
   for (const entry of allWeekEntries) {
-    moodByDay[entry.timestamp.split('T')[0]] = entry.mood;
+    moodByDay[toLocalDateKey(entry.timestamp)] = entry.mood;
   }
 
   const days: DayMood[] = weekLoading || !weekData

@@ -43,7 +43,7 @@ export default function OnboardingScreen() {
   const { user: authUser, setUser: setAuthUser } = useAuth();
 
   const [step, setStep] = useState(0);
-  const [consent, setConsent] = useState({ consentImage: true, consentAudio: true, consentChat: true });
+  const [consent, setConsent] = useState({ consentImage: false, consentAudio: false, consentChat: false });
   const [chipState, setChipState] = useState<Record<string, InterestState>>(
     buildChipState(authUser?.likes ?? [], authUser?.dislikes ?? [])
   );
@@ -61,6 +61,17 @@ export default function OnboardingScreen() {
         stor_cons_audio: consent.consentAudio,
         stor_cons_text:  consent.consentChat,
       });
+      if (authUser) {
+        setAuthUser({
+          ...authUser,
+          storage_consent: {
+            ...authUser.storage_consent,
+            stor_cons_image: consent.consentImage,
+            stor_cons_audio: consent.consentAudio,
+            stor_cons_text: consent.consentChat,
+          },
+        });
+      }
     } catch {
       // non-blocking
     } finally {
@@ -76,7 +87,17 @@ export default function OnboardingScreen() {
     try {
       await updateUserInterests({ likes, dislikes });
       if (authUser) {
-        setAuthUser({ ...authUser, likes, dislikes });
+        setAuthUser({
+          ...authUser,
+          likes,
+          dislikes,
+          storage_consent: {
+            ...authUser.storage_consent,
+            stor_cons_image: consent.consentImage,
+            stor_cons_audio: consent.consentAudio,
+            stor_cons_text: consent.consentChat,
+          },
+        });
       }
     } catch {
       // non-blocking

@@ -48,6 +48,34 @@ function normalizeMood(mood: string) {
     return mood.replace(/_/g, ' ').toLowerCase();
 }
 
+function parseAppTimestamp(value: string | number | Date): Date {
+    if (value instanceof Date) return new Date(value.getTime());
+    if (typeof value === 'number') return new Date(value);
+
+    const raw = String(value).trim().replace(' ', 'T');
+    const numeric = Number(raw);
+    if (Number.isFinite(numeric)) return new Date(numeric);
+
+    // Backend emits naive UTC timestamps (no timezone); interpret those as UTC.
+    const hasTimezone = /(Z|[+-]\d{2}:\d{2}|[+-]\d{4})$/i.test(raw);
+    const normalized = /^\d{4}-\d{2}-\d{2}T/.test(raw) && !hasTimezone
+        ? `${raw}Z`
+        : raw;
+
+    const parsed = new Date(normalized);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+
+    return new Date(raw);
+}
+
+function toLocalDateKey(value: string | number | Date): string {
+    const d = parseAppTimestamp(value);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 
 
 
@@ -95,7 +123,7 @@ function buildWeekData(weekStart: Date, allEntries: RawEntry[]): WeekData {
     const byDay: Record<string, RawEntry[]> = {};
 
     for (const entry of allEntries) {
-        const date = entry.timestamp.split('T')[0];
+        const date = toLocalDateKey(entry.timestamp);
         if (!byDay[date]) byDay[date] = [];
         byDay[date].push(entry);
     }
@@ -104,7 +132,7 @@ function buildWeekData(weekStart: Date, allEntries: RawEntry[]): WeekData {
         const d = new Date(weekStart);
         d.setDate(weekStart.getDate() + i);
 
-        const dateStr = d.toISOString().split('T')[0];
+        const dateStr = toLocalDateKey(d);
         const dayEntries = byDay[dateStr] ?? [];
 
         const score = avg(dayEntries.map(e => e.score));
@@ -146,9 +174,7 @@ function capitalize(s: string) {
 }
 
 function formatTimestamp(iso: string): string {
-    const fixed = iso.replace(' ', 'T').split('.')[0] + 'Z';
-
-    return new Date(fixed).toLocaleString('en-US', {
+    return parseAppTimestamp(iso).toLocaleString('en-US', {
         month: 'short',
         day: '2-digit',
         hour: 'numeric',
@@ -208,7 +234,6 @@ export function getWeekStart(date: Date): Date {
 
 export function useJournalData() {
     const { jwt, user } = useAuth();
-    console.log(user)
     const today = new Date();
 
     const [weekStart, setWeekStart] = useState(() => getWeekStart(today));
@@ -262,7 +287,7 @@ export function useJournalData() {
     const loadedWeeksRef = useRef<Record<string, RawEntry[]>>({});
 
     const getWeekKey = (date: Date) =>
-        getWeekStart(date).toISOString().split('T')[0];
+        toLocalDateKey(getWeekStart(date));
 
     const weekStartDateString = (date: Date) => {
         const d = getWeekStart(date);
@@ -281,7 +306,7 @@ export function useJournalData() {
 
         return data.evaluations.map((entry: any) => ({
             id: entry.evaluation.id,
-            timestamp: entry.evaluation.timestamp,
+            timestamp: parseAppTimestamp(entry.evaluation.timestamp).toISOString(),
             mood: entry.evaluation.label ?? 'unknown',
             score: maxScore(entry.evaluation.scores),
             face: {
@@ -366,8 +391,12 @@ useEffect(() => {
         setDayLoading(true);
 
         const dayEntries = allWeekEntries
-            .filter(e => e.timestamp.startsWith(targetDate))
-            .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+            .filter(e => toLocalDateKey(e.timestamp) === targetDate)
+            .sort(
+                (a, b) =>
+                    parseAppTimestamp(a.timestamp).getTime() -
+                    parseAppTimestamp(b.timestamp).getTime()
+            )
             .map(transformEntry);
 
         setEntries(dayEntries);

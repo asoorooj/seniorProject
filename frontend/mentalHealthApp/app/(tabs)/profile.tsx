@@ -71,9 +71,9 @@ const DEFAULT_PREFERENCES: UserPreferences = {
 };
 
 const DEFAULT_CONSENT: UserConsent = {
-  stor_cons_image: true,
-  stor_cons_text: true,
-  stor_cons_audio: true,
+  stor_cons_image: false,
+  stor_cons_text: false,
+  stor_cons_audio: false,
 };
 
 
@@ -116,9 +116,9 @@ export default function ProfileScreen() {
         pref_eval_image: authUser?.preferences?.pref_eval_image ?? false
       };
       let consent: UserConsent = {
-        stor_cons_audio: authUser?.storage_consent?.stor_cons_audio ?? true,
-        stor_cons_text: authUser?.storage_consent?.stor_cons_text ?? true,
-        stor_cons_image: authUser?.storage_consent?.stor_cons_image ?? true,
+        stor_cons_audio: authUser?.storage_consent?.stor_cons_audio ?? false,
+        stor_cons_text: authUser?.storage_consent?.stor_cons_text ?? false,
+        stor_cons_image: authUser?.storage_consent?.stor_cons_image ?? false,
       };
       setUser(user);
       setLikes(authUser?.likes ?? []);
@@ -141,6 +141,9 @@ export default function ProfileScreen() {
         const currentUser = await fetchUserProfile();
         if (currentUser?.user?.preferences) {
           setPreferences(currentUser.user.preferences);
+        }
+        if (currentUser?.user?.storage_consent) {
+          setConsent(currentUser.user.storage_consent);
         }
       if(currentUserId){
         const [localProfile, localEmotions] = await Promise.all([

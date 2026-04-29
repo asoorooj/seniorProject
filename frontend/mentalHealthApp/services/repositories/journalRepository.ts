@@ -16,6 +16,16 @@ export interface RawEntry {
 
 type ServerEvaluation = Record<string, any>;
 
+function normalizeTimestampString(value: string): string {
+  const raw = value.trim().replace(" ", "T");
+  const hasTimezone = /(Z|[+-]\d{2}:\d{2}|[+-]\d{4})$/i.test(raw);
+  if (/^\d{4}-\d{2}-\d{2}T/.test(raw) && !hasTimezone) {
+    // Backend currently emits UTC timestamps without timezone info.
+    return `${raw}Z`;
+  }
+  return raw;
+}
+
 function toEpochMs(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value < 1_000_000_000_000 ? Math.trunc(value * 1000) : Math.trunc(value);
@@ -27,7 +37,7 @@ function toEpochMs(value: unknown): number {
         ? Math.trunc(numeric * 1000)
         : Math.trunc(numeric);
     }
-    const parsed = Date.parse(value);
+    const parsed = Date.parse(normalizeTimestampString(value));
     if (Number.isFinite(parsed)) return parsed;
   }
   return Date.now();

@@ -69,7 +69,46 @@ function safeParseJsonArray(value: unknown): string[] {
   }
 }
 
+function coerceBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.toLowerCase() === "true";
+  return fallback;
+}
+
+function normalizeUserSettings(user: User) {
+  const rawPreferences = (user as unknown as { preferences?: Record<string, unknown> }).preferences ?? {};
+  const rawConsent = (user as unknown as { storage_consent?: Record<string, unknown> }).storage_consent ?? {};
+
+  const preferencesSource =
+    "pref_eval_image" in rawPreferences ||
+    "pref_eval_audio" in rawPreferences ||
+    "pref_eval_text" in rawPreferences
+      ? rawPreferences
+      : rawConsent;
+
+  const consentSource =
+    "stor_cons_image" in rawConsent ||
+    "stor_cons_audio" in rawConsent ||
+    "stor_cons_text" in rawConsent
+      ? rawConsent
+      : rawPreferences;
+
+  return {
+    preferences: {
+      pref_eval_image: coerceBoolean(preferencesSource.pref_eval_image),
+      pref_eval_audio: coerceBoolean(preferencesSource.pref_eval_audio),
+      pref_eval_text: coerceBoolean(preferencesSource.pref_eval_text),
+    },
+    storage_consent: {
+      stor_cons_image: coerceBoolean(consentSource.stor_cons_image),
+      stor_cons_audio: coerceBoolean(consentSource.stor_cons_audio),
+      stor_cons_text: coerceBoolean(consentSource.stor_cons_text),
+    },
+  };
+}
+
 export const saveUser = async (userDetails: {access_token:string, user:User}) => {
+  const normalizedSettings = normalizeUserSettings(userDetails.user);
   const likes = Array.isArray(userDetails.user.likes) ? userDetails.user.likes : [];
   const dislikes = Array.isArray(userDetails.user.dislikes) ? userDetails.user.dislikes : [];
   await AsyncStorage.multiSet([
@@ -78,13 +117,13 @@ export const saveUser = async (userDetails: {access_token:string, user:User}) =>
     ["id", String(userDetails.user.id ?? "")],
     ["external_id", userDetails.user.external_id ?? ""],
     ["created_at", userDetails.user.created_at ?? ""],
-    ["consent_text", String(userDetails.user.storage_consent.stor_cons_text ?? "")],
-    ["consent_image", String(userDetails.user.storage_consent.stor_cons_image ?? "")],
-    ["consent_audio", String(userDetails.user.storage_consent.stor_cons_audio ?? "")],
+    ["consent_text", String(normalizedSettings.storage_consent.stor_cons_text)],
+    ["consent_image", String(normalizedSettings.storage_consent.stor_cons_image)],
+    ["consent_audio", String(normalizedSettings.storage_consent.stor_cons_audio)],
     ["streak", String(userDetails.user.streak ?? "")],
-    ["eval_image", String(userDetails.user.preferences.pref_eval_image ?? "")],
-    ["eval_audio", String(userDetails.user.preferences.pref_eval_audio ?? "")],
-    ["eval_text", String(userDetails.user.preferences.pref_eval_text ?? "")],
+    ["eval_image", String(normalizedSettings.preferences.pref_eval_image)],
+    ["eval_audio", String(normalizedSettings.preferences.pref_eval_audio)],
+    ["eval_text", String(normalizedSettings.preferences.pref_eval_text)],
     ["likes", JSON.stringify(likes)],
     ["dislikes", JSON.stringify(dislikes)],
   ]);
@@ -462,12 +501,11 @@ export async function fetchEmotionalProfile() {
 
 export async function fetchCurrentUser() {
   const token = await AsyncStorage.getItem("token");
-  const userId = await AsyncStorage.getItem("user_id");
   try {
-    const res = await fetch(`${API_BASE}/users/${userId}`, {
+    const res = await fetch(`${API_BASE}/users/me`, {
     method: "GET",
     headers: {
-      "Authorization": `Bearer ${token}`,  // Include the token in the Authorization header
+      "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json",
     },
   });
