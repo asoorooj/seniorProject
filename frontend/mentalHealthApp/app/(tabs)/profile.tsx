@@ -137,6 +137,7 @@ export default function ProfileScreen() {
 
   const fetchData = useCallback(async () => {
     setError(false);
+    if (!authUser) return;
     try {
         const currentUser = await fetchUserProfile();
         if (currentUser?.user?.preferences) {
