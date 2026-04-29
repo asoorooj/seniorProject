@@ -7,6 +7,9 @@ import {
   Image,
   ScrollView,
   ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -37,9 +40,23 @@ export default function ChatScreen() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [messageEmotion, setMessageEmotion] = useState<string|undefined>(undefined);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const chatPageLimit = 20;
 
   const {user, jwt} = useAuth();
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSub = Keyboard.addListener(showEvent, () => setIsKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setIsKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const messageKey = (message: Message, index = 0) => {
     const idPart =
@@ -264,6 +281,11 @@ const handleSendMessage = async (text: string) => {
 
   return (
     <SafeAreaView style={styles.screen} edges={["left", "right"]}>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior="padding"
+        keyboardVerticalOffset={0}
+      >
       <View
         style={[
           styles.topHeader,
@@ -366,9 +388,10 @@ const handleSendMessage = async (text: string) => {
       </ScrollView>
 
       <ChatInput
-        bottomInset={insets.bottom || 12}
+        bottomInset={isKeyboardVisible ? 0 : insets.bottom || 12}
         onSendMessage={handleSendMessage}
       />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -377,6 +400,9 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: "#F8F5FF",
+  },
+  keyboardAvoid: {
+    flex: 1,
   },
 
   topHeader: {
