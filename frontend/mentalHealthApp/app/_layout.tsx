@@ -16,7 +16,7 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <Stack>
+          <Stack screenOptions={{ gestureEnabled: false }}>
             <Stack.Screen name="login" options={{ headerShown: false }} />
             <Stack.Screen name="chat" options={{ headerShown: false }} />
             <Stack.Screen name="terms" options={{ headerShown: false }} />
@@ -28,7 +28,7 @@ export default function RootLayout() {
             <Stack.Screen name="survey-text" options={{ headerShown: false }} />
             <Stack.Screen name="survey-results" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal', gestureEnabled: true }} />
           </Stack>
           <StatusBar style="auto" />
       </ThemeProvider>

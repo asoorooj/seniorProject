@@ -84,10 +84,9 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     paddingHorizontal: 28,
-    paddingTop: 56,
+    paddingTop: 16,
     paddingBottom: 40,
-    justifyContent: 'space-between',
-    minHeight: '100%',
+    justifyContent: 'flex-start',
   },
 
   contentCompact: {
@@ -96,8 +95,10 @@ const styles = StyleSheet.create({
   },
 
   topGroup: {
+    flex: 1,
     width: '100%',
     alignItems: 'center',
+    justifyContent: 'center',
   },
 
   topGroupWide: {
@@ -135,6 +136,7 @@ const styles = StyleSheet.create({
 
   buttonGroup: {
     width: '100%',
+    marginTop: 32,
   },
 
   buttonGroupWide: {

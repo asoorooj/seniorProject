@@ -123,7 +123,7 @@ export default function LoginScreen() {
             <TouchableOpacity
               style={styles.registerRow}
               activeOpacity={0.8}
-              onPress={() => router.push("/register")}
+              onPress={() => router.replace("/register")}
             >
               <Text style={styles.registerText}>
                 Don&apos;t have an account? <Text style={styles.registerLink}>Register</Text>
