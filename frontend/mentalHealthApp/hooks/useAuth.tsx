@@ -58,30 +58,45 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let mounted = true;
 
     const bootstrap = async () => {
-      setLoading(true);
+  setLoading(true);
+  try {
+    const restored = await getUser();
+    if (!mounted) return;
+
+    //  only fetch profile if we have a saved token
+    if (restored && restored.token) {
+      setJwt(restored.token);
       try {
-        const restored = await getUser();
-        try{
-          const updatedUserData = await fetchUserProfile();
-          await syncUser(updatedUserData.user);
-          const userToUpdate = {...updatedUserData.user,journalCount: updatedUserData.journal_count}
-          setUser(userToUpdate);
-        } catch (error){
-          console.error(error, "Can not update user profile");
-          if (restored && restored.token) {
-            setUser(restored);
-            setJwt(restored.token);
-          }
-        }
-        if (!mounted) return;
-      } catch (err) {
-        console.warn("[auth] restore failed", err);
-      } finally {
-        if (mounted) {
-          setLoading(false);
+        const updatedUserData = await fetchUserProfile();
+        await syncUser(updatedUserData.user);
+        const userToUpdate = {
+          ...updatedUserData.user,
+          journalCount: updatedUserData.journal_count
+        };
+        setUser(userToUpdate);
+      } catch (error: any) {
+        console.error(error, "Can not update user profile");
+        if (error?.status === 401) {
+          //  token expired - clear everything
+          console.log("Token expired, clearing session");
+          await clearDatabase();
+          setUser(null);
+          setJwt(null);
+        } else {
+          //  network error - use cached user
+          setUser(restored);
         }
       }
-    };
+    }
+    // no token = not logged in, stay on login screen
+  } catch (err) {
+    console.warn("[auth] restore failed", err);
+  } finally {
+    if (mounted) {
+      setLoading(false);
+    }
+  }
+};
 
     bootstrap();
   }, []);
