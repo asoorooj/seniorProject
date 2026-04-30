@@ -4,6 +4,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Alert,
   Text,
   TextInput,
   TouchableOpacity,
@@ -16,39 +17,72 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "../hooks/useAuth";
 import { colors } from "@/assets/styles/colors";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {  ActivityIndicator } from "react-native";
 export default function LoginScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState(""); 
+  const [loading, setLoading] = useState(false); 
   const { user, setUser, jwt, setJwt } = useAuth();
 
-  useEffect(() => {console.log(user, jwt)},[user, jwt]);
-
   const handleLogin = async () => {
-    const res = await loginUser(email, password);
+    setError("");
 
-    console.log("RES:", res);
+    //  input validation
+    if (!email.trim()) {
+      setError("Please enter your email");
+      return;
+    }
+    if (!email.includes("@")) {
+      setError("Please enter a valid email");
+      return;
+    }
+    if (!password.trim()) {
+      setError("Please enter your password");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters");
+      return;
+    }
 
-    if (res.access_token && res.user_id) {      
-      try {
-        await saveUser(res);
-        console.log("persistAuthSession done ✅");
-      } catch (e) {
-        console.warn("persistAuthSession FAILED ❌", e); 
+    setLoading(true);
+    try {
+      const res = await loginUser(email, password);
+      console.log("RES:", res);
+
+      if (res.access_token && res.user_id) {
+        try {
+          await saveUser(res);
+          console.log("persistAuthSession done ✅");
+        } catch (e) {
+          console.warn("persistAuthSession FAILED ❌", e);
+        }
+
+        const token = await AsyncStorage.getItem("token");
+        setJwt(token);
+        const savedUser = await getUser();
+        setUser(savedUser);
+
+        //  welcome back popup
+        const firstName = res.user?.email?.split("@")[0] ?? "there";
+        Alert.alert(
+          "Welcome back! 👋",
+          `Good to see you again, ${firstName}!`,
+          [{ text: "Let's go!", onPress: () => router.replace("/(tabs)") }]
+        );
+
+      } else {
+        //  show backend error
+        setError(res.error ?? "Invalid credentials. Please try again.");
       }
-      router.replace("/(tabs)");
-      const token = await AsyncStorage.getItem("token");
-      const user_id = await AsyncStorage.getItem("id");
-      console.log("SAVED TOKEN:", token);
-      console.log("UserId: ", user_id);
-
-      setJwt(token);
-      setUser(await getUser());
-
-    } else {
-      console.log(res.error);
+    } catch (e) {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
   return (
@@ -111,15 +145,24 @@ export default function LoginScreen() {
             <TouchableOpacity style={styles.forgotButton} activeOpacity={0.8}>
               <Text style={styles.forgotText}>Forgot Password?</Text>
             </TouchableOpacity>
+            
+            {/*  error message */}
+            {error ? (
+              <Text style={styles.errorText}>{error}</Text>
+            ) : null}
 
             <TouchableOpacity
-              style={styles.loginButton}
+              style={[styles.loginButton, loading && { opacity: 0.7 }]}
               activeOpacity={0.85}
               onPress={handleLogin}
+              disabled={loading}
             >
-              <Text style={styles.loginButtonText}>Login</Text>
+              {loading ? (
+                <ActivityIndicator color={colors.surface} />
+              ) : (
+                <Text style={styles.loginButtonText}>Login</Text>
+              )}
             </TouchableOpacity>
-
             <TouchableOpacity
               style={styles.registerRow}
               activeOpacity={0.8}
@@ -239,6 +282,12 @@ const styles = StyleSheet.create({
     color: colors.primary,
     textAlign: "right",
   },
+  errorText: {
+  fontSize: 14,
+  color: colors.primary,
+  textAlign: "center",
+  marginTop: -4,
+ },
   loginButton: {
     minHeight: 50,
     borderRadius: 12,
