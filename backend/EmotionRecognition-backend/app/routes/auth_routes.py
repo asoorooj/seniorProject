@@ -103,27 +103,27 @@ def login():
     
 
     return jsonify({
-        "message": "login successful",
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "external_id": user.external_id,
-            "consent_timestamp": user.consent_timestamp.isoformat() if user.consent_timestamp else None,
-            "created_at": user.created_at.isoformat() if user.created_at else None,
-            "likes": user.likes or [],
-            "dislikes": user.dislikes or [],
-            "preferences":{
-                "stor_cons_image":user.stor_cons_image,
-                "stor_cons_audio":user.stor_cons_audio,
-                "stor_cons_text":user.stor_cons_text
-            },
-            "storage_consent":{
-                "pref_eval_image":user.pref_eval_image,
-                "pref_eval_audio":user.pref_eval_audio,
-                "pref_eval_text":user.pref_eval_text,
-            },
-            "streak": user.streak
+    "message": "login successful",
+    "user": {
+        "id": user.id,
+        "email": user.email,
+        "external_id": user.external_id,
+        "consent_timestamp": user.consent_timestamp.isoformat() if user.consent_timestamp else None,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "likes": user.likes or [],
+        "dislikes": user.dislikes or [],
+        "preferences": {
+            "pref_eval_image": user.pref_eval_image,  
+            "pref_eval_audio": user.pref_eval_audio, 
+            "pref_eval_text": user.pref_eval_text,    
         },
-        "access_token": token,
-        "user_id": user.id
-    }), 200
+        "storage_consent": {
+            "stor_cons_image": user.stor_cons_image,  
+            "stor_cons_audio": user.stor_cons_audio,  
+            "stor_cons_text": user.stor_cons_text,    
+        },
+        "streak": user.streak
+    },
+    "access_token": token,
+    "user_id": user.id
+}), 200

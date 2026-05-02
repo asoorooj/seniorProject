@@ -22,43 +22,20 @@ def create_app():
     flask_app.config["JSON_SORT_KEYS"] = False
     
 
-    from app.routes.db_test import db_test_bp
-    flask_app.register_blueprint(db_test_bp)
-
+    
     # Extensions
     cors.init_app(flask_app, resources={r"/*": {"origins": "*"}})
     db.init_app(flask_app)
     migrate.init_app(flask_app, db)
 
-    # ✅ Import models so SQLAlchemy knows them (DO NOT "import app" here)
-    from app.models import db_models  # noqa: F401
+    
+    from app.models import db_models  
 
     # Routes
-    from app.routes.health import health_bp
-    flask_app.register_blueprint(health_bp)
-
     from app.routes.endpoints import api_bp
     flask_app.register_blueprint(api_bp)
 
     from app.routes.auth_routes import auth_bp
     flask_app.register_blueprint(auth_bp)
-
-    # Handle Unauthorized error (401) and Forbidden error (403)
-    @flask_app.errorhandler(401)
-    def unauthorized_error(_):
-        return jsonify(error="Unauthorized", message="Missing or invalid token"), 401
-
-    @flask_app.errorhandler(403)
-    def forbidden_error(_):
-        return jsonify(error="Forbidden", message="You do not have permission to access this resource"), 403
-
-    # Error handlers
-    @flask_app.errorhandler(404)
-    def not_found(_):
-        return jsonify(error="Not Found", message="Route does not exist"), 404
-
-    @flask_app.errorhandler(500)
-    def server_error(_):
-        return jsonify(error="Server Error", message="Something went wrong"), 500
 
     return flask_app

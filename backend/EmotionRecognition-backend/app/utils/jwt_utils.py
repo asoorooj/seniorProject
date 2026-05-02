@@ -8,7 +8,7 @@ import os
 def create_jwt(user_id: int) -> str:
     now = datetime.now(timezone.utc)
 
-    exp_minutes = int(current_app.config.get("JWT_EXPIRES_MIN", 60 * 24 * 30))  # default to 30 days
+    exp_minutes = int(current_app.config.get("JWT_EXPIRES_MIN", 60 * 24 * 30))  # 30 days
     secret = os.getenv("JWT_SECRET")
 
     payload = {
