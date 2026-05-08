@@ -113,14 +113,14 @@ def login():
             "likes": user.likes or [],
             "dislikes": user.dislikes or [],
             "preferences":{
-                "stor_cons_image":user.stor_cons_image,
-                "stor_cons_audio":user.stor_cons_audio,
-                "stor_cons_text":user.stor_cons_text
-            },
-            "storage_consent":{
                 "pref_eval_image":user.pref_eval_image,
                 "pref_eval_audio":user.pref_eval_audio,
                 "pref_eval_text":user.pref_eval_text,
+            },
+            "storage_consent":{
+                "stor_cons_image":user.stor_cons_image,
+                "stor_cons_audio":user.stor_cons_audio,
+                "stor_cons_text":user.stor_cons_text
             },
             "streak": user.streak
         },
