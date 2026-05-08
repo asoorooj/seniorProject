@@ -27,8 +27,6 @@ import {
   logout,
   type UserPreferences,
   type UserConsent,
-  updateUserPreferences,
-  updateUserConsent,
 } from '@/services/apiService';
 import {
   getEmotionsCache,
@@ -96,43 +94,45 @@ export default function ProfileScreen() {
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-  const getValues = async function () {
-    const count = (await getTotalEvals())["COUNT(*)"];
-    const rawDate = authUser?.created_at;
-    const memberSince = rawDate
-      ? `Member since ${new Date(rawDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
-      : PLACEHOLDER_USER.memberSince;
+  useEffect(()=>{
+    const getValues = async function(){
+      const count = (await getTotalEvals())["COUNT(*)"];
+      const rawDate = authUser?.created_at;
+      const memberSince = rawDate
+        ? `Member since ${new Date(rawDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
+        : PLACEHOLDER_USER.memberSince;
+      let user:UserProfile = {
+        name:authUser?.email ?? PLACEHOLDER_USER.name,
+        memberSince,
+        scans: count ?? PLACEHOLDER_USER.scans,
+        journals: authUser?.journalCount ?? count,
+        streak: authUser?.streak ?? 0,
+        likes: authUser?.likes ?? [],
+        dislikes: authUser?.dislikes ?? []
+      };
+      let preferences: UserPreferences = {
+        pref_eval_audio: authUser?.preferences?.pref_eval_audio ?? false,
+        pref_eval_text: authUser?.preferences?.pref_eval_text ?? false,
+        pref_eval_image: authUser?.preferences?.pref_eval_image ?? false
+      };
+      let consent: UserConsent = {
+        stor_cons_audio: authUser?.storage_consent?.stor_cons_audio ?? false,
+        stor_cons_text: authUser?.storage_consent?.stor_cons_text ?? false,
+        stor_cons_image: authUser?.storage_consent?.stor_cons_image ?? false,
+      };
+      setUser(user);
+      setLikes(authUser?.likes ?? []);
+      setDislikes(authUser?.dislikes ?? []);
+      setPreferences(preferences);
+      setConsent(consent);
+      if (authUser) await updateUserCache();
 
-    setUser({
-      name: authUser?.email ?? PLACEHOLDER_USER.name,
-      memberSince,
-      scans: count ?? PLACEHOLDER_USER.scans,
-      journals: authUser?.journalCount ?? count,
-      streak: authUser?.streak ?? 0,
-      likes: authUser?.likes ?? [],
-      dislikes: authUser?.dislikes ?? [],
-    });
+      console.log("[USER]",authUser);
 
-    setLikes(authUser?.likes ?? []);
-    setDislikes(authUser?.dislikes ?? []);
+    };
 
-    //  only set preferences/consent on initial mount, not on every authUser change
-    setPreferences({
-      pref_eval_audio: authUser?.preferences?.pref_eval_audio ?? false,
-      pref_eval_text: authUser?.preferences?.pref_eval_text ?? false,
-      pref_eval_image: authUser?.preferences?.pref_eval_image ?? false,
-    });
-
-    setConsent({
-      stor_cons_audio: authUser?.storage_consent?.stor_cons_audio ?? false,
-      stor_cons_text: authUser?.storage_consent?.stor_cons_text ?? false,
-      stor_cons_image: authUser?.storage_consent?.stor_cons_image ?? false,
-    });
-  };
-
-  getValues();
-}, []); //  empty deps — only runs once on mount
+    getValues();
+  },[authUser, likes, dislikes, updateUserCache]);
 
 
   const fetchData = useCallback(async () => {
@@ -176,37 +176,28 @@ export default function ProfileScreen() {
       ...preferences,
       [key]: !preferences[key],
     };
-    setPreferences(nextPreferences);
 
     if(authUser){
       setAuthUser({...authUser, preferences:{...nextPreferences}});
-    } 
-    try {
-      await updateUserPreferences(nextPreferences);
-      await updateUserCache(); //  sync cache
-  } catch (e) {
-    console.error("Failed to save preferences:", e);
-    setPreferences(preferences); //  revert on failure
-  }
-}, [preferences, authUser, setAuthUser, updateUserCache]);
+    } else { //if authUser is null
 
-  const handleToggleConsent = useCallback(async (key: keyof UserConsent) => {
-  const nextConsent = { ...consent, [key]: !consent[key] };
+    }
 
-  setConsent(nextConsent); //  update local state immediately
+  }, [preferences, jwt, currentUserId]);
 
-  if (authUser) {
-    setAuthUser({ ...authUser, storage_consent: { ...nextConsent } });
-  }
+  const handleToggleConsent = useCallback((key: keyof UserConsent) => {
+    const nextConsent = { ...consent, [key]: !consent[key] };
+    setConsent(nextConsent);
+    if (authUser) {
+      setAuthUser({ ...authUser, storage_consent: { ...nextConsent } });
+    }
+  }, [consent, authUser, setAuthUser]);
 
-  try {
-    await updateUserConsent(nextConsent); //  save to backend
-    await updateUserCache(); //  sync cache
-  } catch (e) {
-    console.error("Failed to save consent:", e);
-    setConsent(consent); //  revert on failure
-  }
-  }, [consent, authUser, setAuthUser, updateUserCache]);
+  useEffect(() => {
+    AsyncStorage.getItem('avatar_id').then((val) => {
+      if (val) setAvatarId(Number(val));
+    });
+  }, []);
 
   const handleSelectAvatar = useCallback((id: number) => {
     setAvatarId(id);

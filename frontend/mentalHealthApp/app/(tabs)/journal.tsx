@@ -9,11 +9,9 @@ import { sectionLabel, pills } from "@/assets/styles/text";
 import { LogEntry } from '@/components/journal/LogEntry';
 import { WeekPicker } from '@/components/journal/WeekPicker';
 import { useJournalData } from '@/hooks/useJournalData';
-import { useRouter } from 'expo-router';
 
 export default function JournalScreen() {
   const [pickerVisible, setPickerVisible] = useState(false);
-  const router = useRouter();
 
   const {
     weekStart,
@@ -36,7 +34,7 @@ export default function JournalScreen() {
           {/* ── Header ─────────────────────────────────────────────── */}
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Journal</Text>
-            <TouchableOpacity style={styles.addButton} onPress={() => router.push('/survey')}>
+            <TouchableOpacity style={styles.addButton}>
               <Text style={styles.addButtonText}>+</Text>
             </TouchableOpacity>
           </View>

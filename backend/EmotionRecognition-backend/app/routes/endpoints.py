@@ -575,7 +575,7 @@ def recieve_eval():
         else:
             return jsonify({"error": "Unsupported Media Type. Use multipart/form-data or application/json."}), 415
 
-        
+        # --- YOUR LOGIC HERE ---
         print("Audio bytes length:", len(audio_bytes))
         print("Image bytes length:", len(image_bytes))
         print("Text:", text)
@@ -599,7 +599,7 @@ def recieve_eval():
         ]
         quick_message = quickEval(label, probs_list, user=user)
 
-        
+        # Example response
         return jsonify({
             "message": "Data received successfully",
             "userId":user_id,
@@ -662,7 +662,7 @@ def _normalize_scores_for_json(scores):
         return None
     if isinstance(scores, dict):
         return {k: float(v) if k != "_raw_label" else v for k, v in scores.items()}
-    
+    # numpy arrays / lists
     try:
         return [float(x) for x in scores]
     except Exception:
@@ -933,7 +933,7 @@ def start_eval_audio():
                 if audio_b64:
                     audio_bytes = base64.b64decode(audio_b64)
 
-            #  SAFETY CHECK
+            # ❗ SAFETY CHECK
             if not audio_bytes:
                 return jsonify({
                     "status": "error",
@@ -943,7 +943,7 @@ def start_eval_audio():
                 return jsonify({"status": "error", "message": "evaluationId is required"}), 400
             evaluation_id = int(evaluation_id)
 
-            #  M4A → CLOUDCONVERT PATH
+            # 🔥 M4A → CLOUDCONVERT PATH
             if audio_file_suffix == ".m4a":
                 print("converting")
                 audio_bytes = convert_m4a_bytes_to_wav_bytes(audio_bytes)
