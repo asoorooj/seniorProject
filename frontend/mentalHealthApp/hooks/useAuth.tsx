@@ -30,7 +30,7 @@ type AuthContextType = {
   jwt: string | null;
   loading: boolean;
 
-  setUser: (user: User | null) => void;
+  setUser: (value: User | null | ((prev: User | null) => User | null)) => void;
   setJwt: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   syncUserToCache: () => Promise<void>;

@@ -134,6 +134,11 @@ export default function ProfileScreen() {
   getValues();
 }, []); //  empty deps — only runs once on mount
 
+useEffect(()=>{
+  if (!authUser) return;
+  updateUserCache();
+},[authUser, updateUserCache]);
+
 
   const fetchData = useCallback(async () => {
     setError(false);
@@ -171,42 +176,50 @@ export default function ProfileScreen() {
     setRefreshing(false);
   }, [fetchData]);
 
-  const handleTogglePreference = useCallback(async (key: keyof UserPreferences) => {
-    const nextPreferences = {
-      ...preferences,
-      [key]: !preferences[key],
-    };
-    setPreferences(nextPreferences);
+const handleTogglePreference = useCallback(async (key: keyof UserPreferences) => {
+  let nextPreferences!: UserPreferences;
 
-    if(authUser){
-      setAuthUser({...authUser, preferences:{...nextPreferences}});
-    } 
-    try {
-      await updateUserPreferences(nextPreferences);
-      await updateUserCache(); //  sync cache
-  } catch (e) {
-    console.error("Failed to save preferences:", e);
-    setPreferences(preferences); //  revert on failure
-  }
-}, [preferences, authUser, setAuthUser, updateUserCache]);
+  setPreferences(prev => {
+    nextPreferences = { ...prev, [key]: !prev[key] };
+    return nextPreferences;
+  });
 
-  const handleToggleConsent = useCallback(async (key: keyof UserConsent) => {
-  const nextConsent = { ...consent, [key]: !consent[key] };
-
-  setConsent(nextConsent); //  update local state immediately
-
-  if (authUser) {
-    setAuthUser({ ...authUser, storage_consent: { ...nextConsent } });
-  }
+  setAuthUser(prev => (prev ? { ...prev, preferences: nextPreferences } : prev));
 
   try {
-    await updateUserConsent(nextConsent); //  save to backend
-    await updateUserCache(); //  sync cache
+    await updateUserPreferences(nextPreferences);
+    // optional: write just this key to AsyncStorage here (local truth)
+    await AsyncStorage.setItem(
+      key === "pref_eval_image" ? "eval_image" : key === "pref_eval_audio" ? "eval_audio" : "eval_text",
+      String(nextPreferences[key])
+    );
+  } catch (e) {
+    console.error("Failed to save preferences:", e);
+    setPreferences(prev => ({ ...prev, [key]: !prev[key] })); // revert
+  }
+}, [setAuthUser]);
+
+const handleToggleConsent = useCallback(async (key: keyof UserConsent) => {
+  let nextConsent!: UserConsent;
+
+  setConsent(prev => {
+    nextConsent = { ...prev, [key]: !prev[key] };
+    return nextConsent;
+  });
+
+  setAuthUser(prev => (prev ? { ...prev, storage_consent: nextConsent } : prev));
+
+  try {
+    await updateUserConsent(nextConsent);
+    await AsyncStorage.setItem(
+      key === "stor_cons_image" ? "consent_image" : key === "stor_cons_audio" ? "consent_audio" : "consent_text",
+      String(nextConsent[key])
+    );
   } catch (e) {
     console.error("Failed to save consent:", e);
-    setConsent(consent); //  revert on failure
+    setConsent(prev => ({ ...prev, [key]: !prev[key] })); // revert
   }
-  }, [consent, authUser, setAuthUser, updateUserCache]);
+}, [setAuthUser]);
 
   const handleSelectAvatar = useCallback((id: number) => {
     setAvatarId(id);
