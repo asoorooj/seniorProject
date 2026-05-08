@@ -231,7 +231,7 @@ function IntroScreen({ onBegin, onSkip }: { onBegin: () => void; onSkip: () => v
 }
 
 // ─── Screen 2: Active recording ───────────────────────────────────────────────
-function RecordingScreen({ onStop }: { onStop: (uri: string) => void }) {
+function RecordingScreen({ onStop, onSkip }: { onStop: (uri: string) => void; onSkip: () => void; }) {
   const [elapsed, setElapsed] = useState(0);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const startedRef   = useRef(false);
@@ -243,26 +243,60 @@ function RecordingScreen({ onStop }: { onStop: (uri: string) => void }) {
   };
 
   useEffect(() => {
-    const startRecording = async () => {
-      if (startedRef.current) return;
-      startedRef.current = true;
-      try {
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-        const { recording } = await Audio.Recording.createAsync(
-          Audio.RecordingOptionsPresets.HIGH_QUALITY
+  const startRecording = async () => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    try {
+      // ✅ Check permission first
+      const { granted } = await Audio.requestPermissionsAsync();
+      if (!granted) {
+        Alert.alert(
+          'Microphone Access Needed',
+          'Please allow microphone access in your settings to record audio.',
         );
-        recordingRef.current = recording;
-      } catch (err) {
-        console.warn('Failed to start recording:', err);
+        onSkip?.(); // skip this step if you have a skip handler
+        return;
       }
-    };
-    startRecording();
 
-    const timer = setInterval(() => setElapsed(e => e + 1), 1000);
-    return () => {
-      clearInterval(timer);
-    };
-  }, []);
+      await Audio.setAudioModeAsync({ 
+        allowsRecordingIOS: true, 
+        playsInSilentModeIOS: true 
+      });
+
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      recordingRef.current = recording;
+
+    } catch (err: any) {
+      console.warn('Failed to start recording:', err);
+
+      // ✅ Handle mic in use specifically
+      if (
+        err?.message?.includes('interrupted') ||
+        err?.message?.includes('in use') ||
+        err?.code === 'E_AUDIO_RECORDER_NOT_PREPARED'
+      ) {
+        Alert.alert(
+          'Microphone Busy',
+          'Your microphone is being used by another app. Please close it and try again.',
+        );
+      } else {
+        Alert.alert(
+          'Recording Failed',
+          'Could not start audio recording. Please try again.',
+        );
+      }
+      onSkip?.(); // gracefully skip instead of crashing
+    }
+  };
+
+  startRecording();
+  const timer = setInterval(() => setElapsed(e => e + 1), 1000);
+  return () => {
+    clearInterval(timer);
+  };
+}, []);
 
   const handleStop = async () => {
     try {
@@ -523,7 +557,7 @@ export default function AudioSurveyScreen() {
       <StepTabs />
 
       {step === 'intro'     && <IntroScreen    onBegin={handleBegin} onSkip={() => routeAfterAudio({ audioSkipped: 'true' })}/>}
-      {step === 'recording' && <RecordingScreen onStop={handleStop} />}
+      {step === 'recording' && <RecordingScreen onStop={handleStop} onSkip={() => routeAfterAudio({ audioSkipped: 'true' })} />}
       {step === 'loading'   && (
         <LoadingScreen
           uri={uri}
